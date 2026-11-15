@@ -48,13 +48,14 @@ struct SettingsView: View {
             }
         }
 
+        /// macOSの設定サイドバーに合わせたカテゴリ別アイコン。
         var symbol: String {
             switch self {
             case .general: "gearshape"
-            case .sleeves: "opticaldisc"
-            case .shelf: "square.grid.3x3"
-            case .wall: "paintbrush"
-            case .arrangement: "rectangle.portrait.rotate"
+            case .sleeves: "record.circle"
+            case .wall: "rectangle.inset.filled"
+            case .shelf: "square.grid.2x2"
+            case .arrangement: "hand.raised"
             }
         }
     }
@@ -71,7 +72,12 @@ struct SettingsView: View {
         // (.toolbar(removing: .sidebarToggle)はこの構成では効かない)
         NavigationSplitView(columnVisibility: .constant(.doubleColumn)) {
             List(SettingsPane.allCases, selection: $selectedPane) { pane in
-                Label(pane.title, systemImage: pane.symbol)
+                Label {
+                    Text(pane.title)
+                } icon: {
+                    Image(systemName: pane.symbol)
+                        .foregroundStyle(.white)
+                }
                     .tag(pane)
             }
             .navigationSplitViewColumnWidth(min: 160, ideal: 180, max: 220)
