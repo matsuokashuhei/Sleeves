@@ -86,6 +86,11 @@ struct SettingsView: View {
                         Section {
                             languagePicker
                         }
+                        // Dockアイコンはアプリ全体共通の設定なので
+                        // store(フォーカス中シェルフ)が無くても出す
+                        Section {
+                            AppIconPicker()
+                        }
                         // 削除確認はアプリ全体の振る舞いに近いので
                         // Generalに置く(編集対象は他の表示設定と同じく
                         // フォーカス中のシェルフ)
@@ -846,5 +851,63 @@ private struct PluginOptionsRow: View {
             $0.values[spec.id] = .string(newValue)
         }
         Self.logger.notice("plugin param committed: \(plugin.id, privacy: .public)/\(spec.id, privacy: .public)=\(newValue, privacy: .public) (shelf=\(self.store.shelfID, privacy: .public))")
+    }
+}
+
+/// Dockアイコンのプリセット選択(Generalペイン)。
+/// アプリ全体共通の設定なのでShelfStoreは要求しない
+/// (フォーカス中シェルフが無くても操作できる)。
+/// サムネイルを横並びにして選択中だけアクセント色の枠を付ける
+private struct AppIconPicker: View {
+
+    private static let logger = Logger(subsystem: "com.cacheandbuffer.Sleeves", category: "UI")
+
+    /// サムネイルの1辺
+    private static let thumbnailSize: CGFloat = 64
+    /// サムネイルの角丸。macOSのアイコン形状(連続角丸のsquircle)に
+    /// 近づけるため1辺の約22%にしてある
+    private static let cornerRadius: CGFloat = 14
+
+    /// 表示中の選択。実体はUserDefaults(AppIconManager.saved)で、
+    /// ここは表示用のミラーとしてタップのたびに更新する
+    @State private var selected: AppIconManager.AppIconPreset = AppIconManager.saved
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("App Icon")
+            HStack(spacing: 20) {
+                ForEach(AppIconManager.AppIconPreset.allCases) { preset in
+                    Button {
+                        Self.logger.notice("settings: app icon preset tapped \(preset.rawValue, privacy: .public)")
+                        AppIconManager.select(preset)
+                        // selectはapply失敗時に保存しないので、表示も
+                        // 保存値へ寄せ直す(失敗した選択が残らない)
+                        selected = AppIconManager.saved
+                    } label: {
+                        VStack(spacing: 6) {
+                            Image(preset.assetName)
+                                .resizable()
+                                .aspectRatio(1, contentMode: .fit)
+                                .frame(width: Self.thumbnailSize, height: Self.thumbnailSize)
+                                .clipShape(RoundedRectangle(cornerRadius: Self.cornerRadius))
+                                .overlay {
+                                    RoundedRectangle(cornerRadius: Self.cornerRadius)
+                                        .strokeBorder(
+                                            selected == preset
+                                                ? Color.accentColor
+                                                : Color.secondary.opacity(0.3),
+                                            lineWidth: selected == preset ? 2 : 1)
+                                }
+                            Text(LocalizedStringKey(preset.label))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityAddTraits(selected == preset ? .isSelected : [])
+                }
+            }
+            .padding(.vertical, 4)
+        }
     }
 }

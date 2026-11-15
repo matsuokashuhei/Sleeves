@@ -28,6 +28,7 @@
 		6C94F3F0277E666C2582AFCB /* MediaCatalogClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF41B33FA65823328513F71D /* MediaCatalogClient.swift */; };
 		6FBE45B914FD317B904F745B /* ShelfSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53D7F5C7FECC6433C4D1C51B /* ShelfSettings.swift */; };
 		749DACE5D49DB33ED66025CF /* ShelfView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89450E30E25685549753D22E /* ShelfView.swift */; };
+		7D92F661ADBDAF268398EAC9 /* AppIconManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E90202CD008FCAD8D992A07 /* AppIconManager.swift */; };
 		853570E2DF2C1B7598C44B79 /* PlaylistPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74E8B7D55244864A35A382B1 /* PlaylistPlayer.swift */; };
 		89F6C7894E6035DF9E8087B6 /* PlaybackMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16BAD216837A72A5E7D86F25 /* PlaybackMonitor.swift */; };
 		8A336BC9A364DBE8C3450360 /* YellowingPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89F883757235264E2B9B39AB /* YellowingPlugin.swift */; };
@@ -51,6 +52,7 @@
 		0944596EE621102CE8CDC718 /* ShelfPlugins.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShelfPlugins.swift; sourceTree = "<group>"; };
 		16A4E3D03C23A31A2E74EC67 /* RingWearPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RingWearPlugin.swift; sourceTree = "<group>"; };
 		16BAD216837A72A5E7D86F25 /* PlaybackMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackMonitor.swift; sourceTree = "<group>"; };
+		1E90202CD008FCAD8D992A07 /* AppIconManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppIconManager.swift; sourceTree = "<group>"; };
 		28CD90CC9146332D9652C19A /* Sleeves Playback.shortcut */ = {isa = PBXFileReference; path = "Sleeves Playback.shortcut"; sourceTree = "<group>"; };
 		333C11AB6C03887645FBD8FE /* ShelfPluginModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShelfPluginModel.swift; sourceTree = "<group>"; };
 		3539282E2D00D87494F193BB /* MediaEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaEntry.swift; sourceTree = "<group>"; };
@@ -177,6 +179,7 @@
 		DE528D64A51B119711D031DC /* Sleeves */ = {
 			isa = PBXGroup;
 			children = (
+				1E90202CD008FCAD8D992A07 /* AppIconManager.swift */,
 				C55C08BFCEF7D777250CF115 /* Assets.xcassets */,
 				E046FD682D441B27CEA64253 /* DeleteConfirmationDialog.swift */,
 				6AD8663D9E76266BD870B58D /* InfoPlist.xcstrings */,
@@ -319,6 +322,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				95E282EFEA12C73C2DB07931 /* AmbientLightPlugin.swift in Sources */,
+				7D92F661ADBDAF268398EAC9 /* AppIconManager.swift in Sources */,
 				14527F5BC1CD30D73FAA278E /* DeleteConfirmationDialog.swift in Sources */,
 				6B4044DBC6FA6E472AF352B7 /* EdgeWearPlugin.swift in Sources */,
 				36AA3D27CC42CA0475A7F5D4 /* LeanDepthPlugin.swift in Sources */,

@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="wall" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#EBD4B0"/>
+      <stop offset="1" stop-color="#CFA978"/>
+    </linearGradient>
+    <linearGradient id="ledge" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#AC7E53"/>
+      <stop offset="0.14" stop-color="#453226"/>
+      <stop offset="1" stop-color="#2A201B"/>
+    </linearGradient>
+    <linearGradient id="sleeve" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#EC7F38"/>
+      <stop offset="1" stop-color="#B53D2E"/>
+    </linearGradient>
+    <clipPath id="jacketClip"><rect x="0" y="0" width="360" height="360" rx="5"/></clipPath>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#wall)"/>
+  <rect x="187" y="192" width="662" height="662" rx="9" fill="#7A5B3A" opacity="0.22"/>
+  <g transform="translate(181 181) scale(1.8388889)">
+    <g clip-path="url(#jacketClip)">
+      <rect width="360" height="360" fill="url(#sleeve)"/>
+      <circle cx="180" cy="180" r="156" fill="#F7B43D"/>
+      <circle cx="180" cy="180" r="115" fill="#FBE8BE"/>
+      <circle cx="180" cy="180" r="87" fill="#DD5834"/>
+      <circle cx="180" cy="180" r="66" fill="#FFF2D9"/>
+      <circle cx="163" cy="170" r="6" fill="#5E3E2F"/>
+      <circle cx="197" cy="170" r="6" fill="#5E3E2F"/>
+      <ellipse cx="180" cy="188" rx="23" ry="21" fill="#794F3B"/>
+      <circle cx="172" cy="185" r="2.6" fill="#2A1B14"/>
+      <circle cx="188" cy="185" r="2.6" fill="#2A1B14"/>
+      <path d="M174 195Q180 199 186 195" stroke="#5E3E2F" stroke-width="2" fill="none" stroke-linecap="round"/>
+    </g>
+  </g>
+  <rect x="104" y="866" width="816" height="69" rx="5" fill="url(#ledge)"/>
+</svg>

@@ -8,10 +8,23 @@
 import SwiftUI
 import os
 
+/// 起動後処理を載せるデリゲート。Dockアイコンの再適用はNSAppが
+/// 使えるようになってからでないとできない(App.init時点では
+/// NSAppの準備が保証されない)ため、didFinishLaunchingで行う。
+/// --catalog-test(CLI)経路でも呼ばれるが、Dockアイコンの適用は
+/// ウィンドウを出さなくても害がない処理なので分岐は入れない
+private final class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        AppIconManager.applySaved()
+    }
+}
+
 @main
 struct SleevesApp: App {
 
     private static let logger = Logger(subsystem: "com.cacheandbuffer.Sleeves", category: "UI")
+
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     /// Sparkleのアップデーター。--catalog-test(CLI)モードでは生成しない:
     /// その経路はウィンドウを出さず即exitするため、Sparkleのスケジューラを
