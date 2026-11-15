@@ -385,6 +385,15 @@ pkill -x Sleeves; open .build/Build/Products/Debug/Sleeves.app
     `SystemCapabilities` 注入も無効だった — MusicKitはXcodeのcapabilityに無い)
 - `NSAppleMusicUsageDescription`(Info.plist)が無いと、MusicAuthorization.request() 時に
   TCCがSIGABRTでアプリを即死させる(project.ymlの `INFOPLIST_KEY_NSAppleMusicUsageDescription` で対応済み)
+- Apple Music権限は `MusicAuthorization.request()` 1つに集約され、macOSではTCC
+  `kTCCServiceMediaLibrary`(itunescloudd.tcchelper経由)として
+  「プライバシーとセキュリティ → メディアとApple Music」に出る。
+  システム設定上の内訳(「メディアライブラリ」「ミュージックとビデオの履歴」等)は
+  この1許可のスコープ表示で個別ON/OFF不可(2026-11-14調査)。
+  `ApplicationMusicPlayer.Queue.affectsListeningHistory`(macOS 26.4+)をfalseにすれば
+  再生を履歴に残さないこともできるが、ユーザー方針で履歴に残す=既定trueのままとした(2026-11-14)。
+  `tccutil reset MediaLibrary <bundleID>` はTCC側だけ戻し、
+  MusicKit認可(itunescloudd管理)は残るので再プロンプト検証には使えない(実測)
 - **CLI検証経路**: `Sleeves --catalog-test <URL> [--play]` で起動するとUIを介さず
   MediaCatalogClient.fetch(+PlaybackEngine.play)を実行し結果をログに出して終了する
   (SleevesApp.swiftのinit内。UIを触れないエージェントの検証用)

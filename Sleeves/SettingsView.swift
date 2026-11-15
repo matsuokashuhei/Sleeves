@@ -245,20 +245,30 @@ struct SettingsView: View {
         Locale(identifier: code).localizedString(forLanguageCode: code) ?? code
     }
 
+    /// 現在の言語設定のタグ値を返す。AppleLanguages未設定なら"system"。
+    /// standard.stringArrayはNSGlobalDomainまでフォールバックして
+    /// OSの言語一覧を拾ってしまう(未設定なのにピッカーが空選択になる)
+    /// ため、アプリ固有ドメインだけ読む
+    private static var currentLanguageCode: String {
+        let domain = UserDefaults.standard.persistentDomain(
+            forName: Bundle.main.bundleIdentifier ?? "com.cacheandbuffer.Sleeves"
+        )
+        return (domain?["AppleLanguages"] as? [String])?.first ?? "system"
+    }
+
     /// AppleLanguagesに言語コードを書き込んでアプリの表示言語を切り替える。
     /// "system"選択時はキーごと消してOS設定に戻す。反映は次回起動から。
+    /// Pickerはポップアップを開いた時点でも現在値でsetを呼ぶため、
+    /// 値が変わっていなければ書き込みもアラートもしない
+    /// (開くだけで再起動要求が出るバグの対処)
     private var languageSelection: Binding<String> {
         Binding(
-            get: {
-                // standard.stringArrayはNSGlobalDomainまでフォールバックして
-                // OSの言語一覧を拾ってしまう(未設定なのにピッカーが空選択になる)。
-                // アプリ固有ドメインだけ読む
-                let domain = UserDefaults.standard.persistentDomain(
-                    forName: Bundle.main.bundleIdentifier ?? "com.cacheandbuffer.Sleeves"
-                )
-                return (domain?["AppleLanguages"] as? [String])?.first ?? "system"
-            },
+            get: { Self.currentLanguageCode },
             set: { newValue in
+                guard newValue != Self.currentLanguageCode else {
+                    Self.logger.notice("settings: language picker set with unchanged value \(newValue, privacy: .public)")
+                    return
+                }
                 Self.logger.notice("settings: language picker changed to \(newValue, privacy: .public)")
                 if newValue == "system" {
                     UserDefaults.standard.removeObject(forKey: "AppleLanguages")
