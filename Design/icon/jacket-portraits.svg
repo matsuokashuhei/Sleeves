@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="wall" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#EBD4B0"/>
+      <stop offset="1" stop-color="#CFA978"/>
+    </linearGradient>
+    <linearGradient id="ledge" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#AC7E53"/>
+      <stop offset="0.14" stop-color="#453226"/>
+      <stop offset="1" stop-color="#2A201B"/>
+    </linearGradient>
+    <clipPath id="jacketClip"><rect x="0" y="0" width="360" height="360" rx="5"/></clipPath>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#wall)"/>
+  <rect x="187" y="192" width="662" height="662" rx="9" fill="#7A5B3A" opacity="0.22"/>
+  <g transform="translate(181 181) scale(1.8388889)">
+    <g clip-path="url(#jacketClip)">
+      <rect width="360" height="360" fill="#0D0D0D"/>
+      <g>
+        <rect x="36" y="36" width="140" height="140" rx="3" fill="#E6D8C5"/>
+        <rect x="44" y="44" width="124" height="124" fill="#9E6C55"/>
+        <ellipse cx="106" cy="106" rx="31" ry="35" fill="#4F352E"/>
+        <path d="M60 170V156Q60 120 106 120Q152 120 152 156V170Z" fill="#4F352E"/>
+        <ellipse cx="106" cy="104" rx="21" ry="26" fill="#E0B999"/>
+      </g>
+      <g>
+        <rect x="184" y="36" width="140" height="140" rx="3" fill="#E6D8C5"/>
+        <rect x="192" y="44" width="124" height="124" fill="#A54F3D"/>
+        <ellipse cx="254" cy="106" rx="31" ry="35" fill="#222222"/>
+        <path d="M208 170V156Q208 120 254 120Q300 120 300 156V170Z" fill="#222222"/>
+        <ellipse cx="254" cy="104" rx="21" ry="26" fill="#D7B49A"/>
+      </g>
+      <g>
+        <rect x="36" y="184" width="140" height="140" rx="3" fill="#E6D8C5"/>
+        <rect x="44" y="192" width="124" height="124" fill="#383D42"/>
+        <ellipse cx="106" cy="254" rx="31" ry="35" fill="#2A2626"/>
+        <path d="M60 318V304Q60 268 106 268Q152 268 152 304V318Z" fill="#2A2626"/>
+        <ellipse cx="106" cy="252" rx="21" ry="26" fill="#D5B39C"/>
+      </g>
+      <g>
+        <rect x="184" y="184" width="140" height="140" rx="3" fill="#E6D8C5"/>
+        <rect x="192" y="192" width="124" height="124" fill="#5F777E"/>
+        <ellipse cx="254" cy="254" rx="31" ry="35" fill="#35322E"/>
+        <path d="M208 318V304Q208 268 254 268Q300 268 300 304V318Z" fill="#35322E"/>
+        <ellipse cx="254" cy="252" rx="21" ry="26" fill="#D2A98D"/>
+      </g>
+    </g>
+  </g>
+  <rect x="104" y="866" width="816" height="69" rx="5" fill="url(#ledge)"/>
+</svg>

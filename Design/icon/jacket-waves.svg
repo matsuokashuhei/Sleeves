@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="wall" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#EBD4B0"/>
+      <stop offset="1" stop-color="#CFA978"/>
+    </linearGradient>
+    <linearGradient id="ledge" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#AC7E53"/>
+      <stop offset="0.14" stop-color="#453226"/>
+      <stop offset="1" stop-color="#2A201B"/>
+    </linearGradient>
+    <clipPath id="jacketClip"><rect x="0" y="0" width="360" height="360" rx="5"/></clipPath>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#wall)"/>
+  <rect x="187" y="192" width="662" height="662" rx="9" fill="#7A5B3A" opacity="0.22"/>
+  <g transform="translate(181 181) scale(1.8388889)">
+    <g clip-path="url(#jacketClip)">
+      <rect width="360" height="360" fill="#161C16"/>
+      <g fill="none" stroke="#E4494F" stroke-width="22" stroke-linecap="round">
+        <path d="M20 -15C65 60 -10 145 45 230C75 280 15 330 55 390"/>
+        <path d="M80 -15C125 60 50 145 105 230C135 280 75 330 115 390"/>
+        <path d="M140 -15C185 60 110 145 165 230C195 280 135 330 175 390"/>
+        <path d="M200 -15C245 60 170 145 225 230C255 280 195 330 235 390"/>
+        <path d="M55 205C90 178 120 182 135 208"/>
+      </g>
+      <path d="M262 -15C300 70 230 150 275 235C300 282 250 330 280 390" fill="none" stroke="#8AB75F" stroke-width="22" stroke-linecap="round"/>
+    </g>
+  </g>
+  <rect x="104" y="866" width="816" height="69" rx="5" fill="url(#ledge)"/>
+</svg>

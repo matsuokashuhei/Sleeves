@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="wall" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#EBD4B0"/>
+      <stop offset="1" stop-color="#CFA978"/>
+    </linearGradient>
+    <linearGradient id="ledge" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#AC7E53"/>
+      <stop offset="0.14" stop-color="#453226"/>
+      <stop offset="1" stop-color="#2A201B"/>
+    </linearGradient>
+    <clipPath id="jacketClip"><rect x="0" y="0" width="360" height="360" rx="5"/></clipPath>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#wall)"/>
+  <rect x="187" y="192" width="662" height="662" rx="9" fill="#7A5B3A" opacity="0.22"/>
+  <g transform="translate(181 181) scale(1.8388889)">
+    <g clip-path="url(#jacketClip)">
+      <rect width="360" height="360" fill="#0D1616"/>
+      <circle cx="180" cy="177" r="170" fill="#1C2222"/>
+      <circle cx="180" cy="177" r="140" fill="none" stroke="#232B2B" stroke-width="2.5"/>
+      <circle cx="180" cy="177" r="152" fill="none" stroke="#232B2B" stroke-width="2.5"/>
+      <circle cx="180" cy="177" r="164" fill="none" stroke="#232B2B" stroke-width="2.5"/>
+      <path d="M-5 182L162 205" stroke="#E5E0D4" stroke-width="5"/>
+      <path d="M178 90L104 233H253Z" fill="#2A383D" stroke="#CFD8D8" stroke-width="5" stroke-linejoin="round"/>
+      <path d="M253 198L365 170" stroke="#EB5140" stroke-width="8"/>
+      <path d="M253 202L365 181" stroke="#F28F3D" stroke-width="8"/>
+      <path d="M253 206L365 192" stroke="#F2CA4D" stroke-width="8"/>
+      <path d="M253 210L365 203" stroke="#62A86A" stroke-width="8"/>
+      <path d="M253 214L365 214" stroke="#5398B3" stroke-width="8"/>
+      <path d="M253 218L365 225" stroke="#7572B0" stroke-width="8"/>
+    </g>
+  </g>
+  <rect x="104" y="866" width="816" height="69" rx="5" fill="url(#ledge)"/>
+</svg>
