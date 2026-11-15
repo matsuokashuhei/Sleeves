@@ -3744,37 +3744,37 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sleeves"
+            "value" : "Hüllen"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sleeves"
+            "value" : "Fundas"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sleeves"
+            "value" : "Pochettes"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sleeves"
+            "value" : "スリーブ"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sleeves"
+            "value" : "슬리브"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sleeves"
+            "value" : "封套"
           }
         }
       }
