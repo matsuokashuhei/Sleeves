@@ -54,7 +54,7 @@ struct WallPlugin: ShelfPlugin {
     /// 一度決めたら変更しない。
     /// internalなのは、壁材ごとの個性(agingProfile)を照明系プラグイン
     /// (AmbientLightPlugin)からも同じ壁で引けるようにするため
-    enum Wall: String, CaseIterable {
+    enum Wall: String, CaseIterable, PluginOption {
         /// 暖色クリーム(レコード店の壁)
         case cream
         /// ニュートラルな暖灰
@@ -73,6 +73,20 @@ struct WallPlugin: ShelfPlugin {
         case paperLaid = "paper-laid"
         /// マットコート紙
         case paperCoated = "paper-coated"
+        /// 黒板(チョークボード)
+        case blackboard
+        /// 白い左官仕上げのコンクリート壁
+        case concrete
+        /// オレンジのウールフェルト
+        case orangeWool = "orange-wool"
+        /// 褪せた青の張り地クロス
+        case fadedBlue = "faded-blue"
+        /// 琥珀色の織物
+        case amberWeave = "amber-weave"
+        /// ビリヤード台の緑のフェルト(バイズ)
+        case billiardFelt = "billiard-felt"
+        /// 淡いグレーの皺のあるリネン
+        case grayLinen = "gray-linen"
 
         /// 表示ラベル(Localizable.xcstringsのキー)
         var label: String {
@@ -86,11 +100,18 @@ struct WallPlugin: ShelfPlugin {
             case .paperNewsprint: return "Newsprint"
             case .paperLaid: return "Laid Paper"
             case .paperCoated: return "Coated Paper"
+            case .blackboard: return "Blackboard"
+            case .concrete: return "Concrete"
+            case .orangeWool: return "Orange Wool"
+            case .fadedBlue: return "Faded Blue"
+            case .amberWeave: return "Amber Weave"
+            case .billiardFelt: return "Billiard Felt"
+            case .grayLinen: return "Gray Linen"
             }
         }
 
-        /// 紙壁の場合のアセット名(非紙はnil)
-        var paperAsset: String? {
+        /// テクスチャ壁の場合のアセット名(単色グラデ壁はnil)
+        var textureAsset: String? {
             switch self {
             case .cream, .warmGray, .charcoal: return nil
             case .paperWhite: return "paper-white"
@@ -99,6 +120,34 @@ struct WallPlugin: ShelfPlugin {
             case .paperNewsprint: return "paper-newsprint"
             case .paperLaid: return "paper-laid"
             case .paperCoated: return "paper-coated"
+            case .blackboard: return "blackboard"
+            case .concrete: return "concrete"
+            case .orangeWool: return "orange-wool"
+            case .fadedBlue: return "faded-blue"
+            case .amberWeave: return "amber-weave"
+            case .billiardFelt: return "billiard-felt"
+            case .grayLinen: return "gray-linen"
+            }
+        }
+
+        /// 設定メニューの選択肢行に付ける見本。
+        /// テクスチャ壁は質感サムネイル、単色グラデ壁は代表色
+        /// (gradientの中間色)の丸見本
+        var icon: PluginParameterSpec.Options.Choice.Icon? {
+            if let asset = textureAsset { return .texture(asset) }
+            switch self {
+            case .cream:
+                return .color(
+                    red: 0xEB/255, green: 0xE1/255, blue: 0xD0/255)
+            case .warmGray:
+                return .color(
+                    red: 0xAB/255, green: 0xA3/255, blue: 0x97/255)
+            case .charcoal:
+                return .color(
+                    red: 0x33/255, green: 0x33/255, blue: 0x39/255)
+            default:
+                // textureAsset非nilの壁は上でreturn済み(到達しない)
+                return .color(red: 0.5, green: 0.5, blue: 0.5)
             }
         }
 
@@ -175,6 +224,64 @@ struct WallPlugin: ShelfPlugin {
                     fadeMark: Color(red: 0.97, green: 0.95, blue: 0.90),
                     fadeMarkGain: 1, warmthGain: 1,
                     vignette: (0.48, 0.32, 0.15), vignetteGain: 1)
+            case .blackboard:
+                // 暗い壁: charcoalと同じく加算系。染みは明るい埃/かすれ、
+                // 日焼け残りは焼ける前の黒板色
+                return .init(
+                    stain: .light, stainGain: 1,
+                    sepiaMultiply: false, sepiaGain: 1,
+                    fadeMark: Color(red: 0.30, green: 0.30, blue: 0.33),
+                    fadeMarkGain: 1, warmthGain: 1.4,
+                    vignette: (0.13, 0.13, 0.16), vignetteGain: 1.1)
+            case .concrete:
+                // ほぼ白のニュートラル壁: paperWhiteに準じる
+                return .init(
+                    stain: .dark, stainGain: 1,
+                    sepiaMultiply: true, sepiaGain: 1,
+                    fadeMark: Color(red: 0.95, green: 0.93, blue: 0.86),
+                    fadeMarkGain: 1, warmthGain: 1,
+                    vignette: (0.48, 0.32, 0.15), vignetteGain: 1)
+            case .orangeWool:
+                // 彩度の高い暖色布: 暖色被せとセピアは弱め
+                return .init(
+                    stain: .dark, stainGain: 1,
+                    sepiaMultiply: true, sepiaGain: 0.7,
+                    fadeMark: Color(red: 0.87, green: 0.49, blue: 0.10),
+                    fadeMarkGain: 1, warmthGain: 0.6,
+                    vignette: (0.40, 0.22, 0.06), vignetteGain: 1)
+            case .fadedBlue:
+                // 中間よりやや暗い藍灰色の布: multiplyは効くので
+                // 暗い染みのまま、暗めのビネットを合わせる
+                return .init(
+                    stain: .dark, stainGain: 0.9,
+                    sepiaMultiply: true, sepiaGain: 0.9,
+                    fadeMark: Color(red: 0.40, green: 0.44, blue: 0.53),
+                    fadeMarkGain: 1, warmthGain: 1,
+                    vignette: (0.26, 0.24, 0.18), vignetteGain: 1)
+            case .amberWeave:
+                // 明るい琥珀色の織物: 暖色被せは弱め
+                return .init(
+                    stain: .dark, stainGain: 1,
+                    sepiaMultiply: true, sepiaGain: 0.7,
+                    fadeMark: Color(red: 0.99, green: 0.75, blue: 0.30),
+                    fadeMarkGain: 1, warmthGain: 0.7,
+                    vignette: (0.45, 0.28, 0.08), vignetteGain: 1)
+            case .billiardFelt:
+                // 中間の緑フェルト: 暗い染み=枯れた汚れとして効く
+                return .init(
+                    stain: .dark, stainGain: 1,
+                    sepiaMultiply: true, sepiaGain: 0.9,
+                    fadeMark: Color(red: 0.30, green: 0.55, blue: 0.28),
+                    fadeMarkGain: 1, warmthGain: 0.9,
+                    vignette: (0.16, 0.28, 0.10), vignetteGain: 1)
+            case .grayLinen:
+                // 明るい無彩色の布: 染み・セピアは標準
+                return .init(
+                    stain: .dark, stainGain: 1,
+                    sepiaMultiply: true, sepiaGain: 1,
+                    fadeMark: Color(red: 0.80, green: 0.81, blue: 0.83),
+                    fadeMarkGain: 1, warmthGain: 1,
+                    vignette: (0.44, 0.30, 0.16), vignetteGain: 1)
             }
         }
 
@@ -197,7 +304,7 @@ struct WallPlugin: ShelfPlugin {
                     Color(red: 0x28/255, green: 0x28/255, blue: 0x2E/255),
                 ])
             default:
-                // 紙テクスチャ用: 呼ばれないはずだが安全側のフォールバック
+                // テクスチャ壁用: 呼ばれないはずだが安全側のフォールバック
                 return Gradient(colors: [.white, .gray])
             }
         }
@@ -236,9 +343,7 @@ struct WallPlugin: ShelfPlugin {
             .options(.init(
                 id: Param.wall,
                 label: "Wall",
-                choices: Wall.allCases.map {
-                    .init(id: $0.rawValue, label: $0.label)
-                },
+                choices: Wall.allCases.map { .init($0) },
                 defaultValue: Self.defaultWall.rawValue
             )),
             .slider(.init(
@@ -270,8 +375,8 @@ struct WallPlugin: ShelfPlugin {
     func shelfBackdrop(context: ShelfStructureContext) -> AnyView? {
         let wall = resolvedWall(context: context)
         let backdrop: AnyView
-        if let asset = wall.paperAsset {
-            // 紙壁: 生成済みシームレスタイルを敷き詰め、その上に
+        if let asset = wall.textureAsset {
+            // テクスチャ壁: シームレスタイルを敷き詰め、その上に
             // 天井光(上が明るい)の薄い縦グラデーションを重ねる
             backdrop = AnyView(
                 Image(asset)

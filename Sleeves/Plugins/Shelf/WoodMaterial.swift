@@ -25,7 +25,7 @@ import SwiftUI
 
 /// 木製パーツの素材。rawValueはsettings.jsonへの永続化値なので
 /// 一度決めたら変更しない
-enum WoodMaterial: String, CaseIterable {
+enum WoodMaterial: String, CaseIterable, PluginOption {
     /// 明るい松系のはちみつ色
     case pine
     /// 中間色のオーク
@@ -51,6 +51,11 @@ enum WoodMaterial: String, CaseIterable {
     /// 目の方向はパーツに合わせて横目で入れてある
     var assetName: String {
         "wood-" + rawValue
+    }
+
+    /// 設定メニューの選択肢行に付ける見本(木目サムネイル)
+    var icon: PluginParameterSpec.Options.Choice.Icon? {
+        .texture(assetName)
     }
 
     /// 上端がわずかに明るい縦グラデーション(前面が光を拾う)。

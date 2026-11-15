@@ -99,9 +99,7 @@ struct LedgeShelfPlugin: ShelfPlugin {
             .options(.init(
                 id: Param.wood,
                 label: "Wood",
-                choices: WoodMaterial.allCases.map {
-                    .init(id: $0.rawValue, label: $0.label)
-                },
+                choices: WoodMaterial.allCases.map { .init($0) },
                 defaultValue: Self.defaultWood.rawValue
             )),
             .slider(.init(

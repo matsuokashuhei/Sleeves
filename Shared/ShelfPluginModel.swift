@@ -119,6 +119,23 @@ enum PluginParameterSpec: Equatable {
         struct Choice: Equatable {
             let id: String
             let label: String
+            /// 選択肢行に付ける見本(壁の色/質感スウォッチ等)。nil=見本なし
+            let icon: Icon?
+
+            /// 選択肢の見本の種類。描画は設定画面側が行う
+            /// (この層はFoundationオンリーなので色はRGB値で持つ)
+            enum Icon: Equatable {
+                /// 単色の丸見本(各成分0-1)
+                case color(red: Double, green: Double, blue: Double)
+                /// アセットカタログの画像を丸く切り抜いた見本
+                case texture(String)
+            }
+
+            init(id: String, label: String, icon: Icon? = nil) {
+                self.id = id
+                self.label = label
+                self.icon = icon
+            }
         }
 
         /// 設定画面での出し方
@@ -161,6 +178,29 @@ enum PluginParameterSpec: Equatable {
         case .slider(let s): return .number(s.defaultValue)
         case .options(let o): return .string(o.defaultValue)
         }
+    }
+}
+
+/// optionsパラメータの選択肢にするenumの共通部品。
+/// `enum Foo: String, CaseIterable, PluginOption` と宣言すると
+/// `Foo.allCases.map { .init($0) }` で選択肢を作れる
+/// (labelだけが必須、iconは省略可=見本なし)。
+/// rawValueが永続化値になるので一度決めたら変更しない
+protocol PluginOption: RawRepresentable where RawValue == String {
+    /// 設定画面の表示名(Localizable.xcstringsのキー)
+    var label: String { get }
+    /// 選択肢行に付ける見本(壁の色/質感スウォッチ等)。nil=見本なし
+    var icon: PluginParameterSpec.Options.Choice.Icon? { get }
+}
+
+extension PluginOption {
+    var icon: PluginParameterSpec.Options.Choice.Icon? { nil }
+}
+
+extension PluginParameterSpec.Options.Choice {
+    /// PluginOption適合enumのcaseから作る
+    init(_ option: any PluginOption) {
+        self.init(id: option.rawValue, label: option.label, icon: option.icon)
     }
 }
 
