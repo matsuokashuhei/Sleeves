@@ -7,13 +7,17 @@
 //  フチと角のつぶれを再現する。
 //
 //  実物観測(70枚調査)では、フチの摩耗は「印刷が剥げて下地の紙色
-//  (白〜アイボリー)が出た筋」で、四辺均等ではなく抜き差し側の辺
+//  (クリーム〜薄茶のボール紙色)が出た筋」で、四辺均等ではなく
+//  抜き差し側の辺
 //  (多くは上辺/左辺)や特定の角が特に削れる。このため
 //   - 四辺: 辺ごとの偏り係数(上/左を強め)×セルごとの決定論的
 //     sinハッシュで摩耗強さを決め、縁でほぼ不透明な紙色から内側へ
 //     消えるグラデ帯を「内側境界の深さを位置ごとのハッシュで揺らした
 //     ギザギザ多角形」で描き、均一な白枠ではなく不規則に途切れる
-//     剥げ筋にする。さらに位置・長さ・太さ・濃さ・深さを散らした
+//     剥げ筋にする。帯は剥げ深さの基準が変わるラン(~16pt)ごとの
+//     部分多角形に分け、ランごとに色味を変えて塗るので、隣接する
+//     区画で微妙に明度・色味の違う斑のある剥げ筋になる。
+//     さらに位置・長さ・太さ・濃さ・深さを散らした
 //     楕円フレークを重ねて帯の内側へ食い込む剥げ片を足す
 //   - 四隅: 実物は全角一律ではなく特定の角だけが打たれてつぶれる
 //     ため、角ごとの出現の有無をセル固有ハッシュで決める
@@ -28,6 +32,13 @@
 //     0に先細る。長さ・深さは辺ごとのハッシュで偏らせる)を重ね、
 //     対角線上の紙むけ点で角打ちの立体感を足す
 //  を jacketOverlay で重ねる。角丸クリップ自体は基盤側が適用済み。
+//
+//  色は「擦り切れた印刷の下に出る紙」(クリーム〜薄茶)を基調と
+//  しつつ、要素ごと(帯のラン・フレーク・角の各パーツ)に独立した
+//  ハッシュで明度・色味を揺らし、少数(~20%)に埃っぽいくすみ
+//  グレー・厚紙の茶・暗い擦り切れを混ぜる(ScuffsPluginの
+//  lineColorと同じ設計)。全要素が同一色だと貼り付けた帯のように
+//  見えるため、実物の不均一な剥げ色に寄せている。
 //
 //  摩耗パターンはセル座標だけから決まる疑似乱数なので、再描画・
 //  リロード・再起動を経ても同じセルは同じ剥げ方になる(P5-3)。
@@ -90,8 +101,22 @@ struct EdgeWearPlugin: ShelfPlugin {
     /// 肉眼でほぼ見えない描画コストを省く下限
     private static let minEffectiveStrength: Double = 0.005
 
-    /// 擦り切れた印刷の下に出る紙の色(実物観測の白〜アイボリー系)
-    private static let paperColor = Color(red: 0.90, green: 0.87, blue: 0.80)
+    /// 白以外の色味のパーツが混ざる確率(目安15〜25%の中央)。
+    /// 実物の剥げは均一な紙色ではなく、埃・下地の厚紙・影の混ざった
+    /// 色が所々に出る(ScuffsPlugin.colorVariantRateと同じ考え方)
+    private static let colorVariantRate: Double = 0.2
+
+    /// 色味用のsalt帯の基点。形状用の既存salt(10帯=辺強度、
+    /// 20帯=角強度、30帯=角出現、40-49=角補助、50-90=楔、
+    /// 100帯=フレーク、200帯=帯の深さ)は変えない。
+    /// 色味saltはScuffsPluginの占有帯(線傷~939、斑点1000-4569)と
+    /// 自プラグインの形状salt(帯の深さは i*2.39/run*5.77 を足すため
+    /// 実効~600まで届く)の両方を避けて5000以降に取り、
+    /// 辺/角ごとに400刻み・要素ごとに*4+k(k0=白さ、k1=バリアント
+    /// 抽選、k2=種別)で割り当てる(各帯の使用量は400未満に収める)
+    private static let saltBandColor: Double = 5000   // +edge*400+run*4+k
+    private static let saltFlakeColor: Double = 7000  // +edge*400+idx*4+k
+    private static let saltCornerColor: Double = 9000 // +corner*400+elm*4+k
 
     /// フチの辺。摩耗の偏り係数とハッシュsaltの基準に使う
     private enum Edge: Int, CaseIterable {
@@ -270,7 +295,6 @@ struct EdgeWearPlugin: ShelfPlugin {
         let dx = p1.x - p0.x
         let dy = p1.y - p0.y
         let len = hypot(dx, dy)
-        let paper = Self.paperColor
 
         // ベース帯: 「縁で最も濃く内側で消える」グラデーションを、
         // 内側境界を~4pt間隔でサンプルして深さをハッシュで揺らした
@@ -301,25 +325,52 @@ struct EdgeWearPlugin: ShelfPlugin {
             innerPts.append(CGPoint(x: p0.x + dx * CGFloat(t) + n.x * d,
                                     y: p0.y + dy * CGFloat(t) + n.y * d))
         }
-        var band = Path()
-        band.move(to: p0)
-        band.addLine(to: p1)
-        for pt in innerPts.reversed() { band.addLine(to: pt) }
-        band.closeSubpath()
+        // 帯全体を一色で塗ると貼り付けた筋に見えるので、深さ基準が
+        // 変わるランごとの部分多角形に分割し、ランごとの色味で塗る。
+        // 隣接ランは境界サンプル(i1)を共有するので隙間なく連続し、
+        // 色味だけが区画ごとに変わって斑のある剥げ筋になる。
+        // グラデーションは帯全体と同じ始終点(縁で濃く内側で消える)
+        // を各ランに適用する
         let mid = CGPoint(x: (p0.x + p1.x) / 2, y: (p0.y + p1.y) / 2)
-        gc.fill(
-            band,
-            with: .linearGradient(
-                Gradient(stops: [
-                    .init(color: paper.opacity(peak), location: 0),
-                    .init(color: paper.opacity(peak * 0.5), location: 0.5),
-                    .init(color: .clear, location: 1),
-                ]),
-                startPoint: mid,
-                endPoint: CGPoint(x: mid.x + n.x * maxDepth,
-                                  y: mid.y + n.y * maxDepth)
+        let gradEnd = CGPoint(x: mid.x + n.x * maxDepth,
+                              y: mid.y + n.y * maxDepth)
+        let runCount = Int(ceil(Double(sampleCount)
+                                / Double(samplesPerRun)))
+        for run in 0..<runCount {
+            let i0 = run * samplesPerRun
+            let i1 = min((run + 1) * samplesPerRun, sampleCount)
+            guard i1 > i0 else { continue }
+            let cb = Self.saltBandColor + Double(edge.rawValue) * 400
+                + Double(run) * 4
+            let runColor = paperTone(
+                whiteness: hash01(cb, context: context),
+                roll: hash01(cb + 1, context: context),
+                variant: hash01(cb + 2, context: context))
+            var seg = Path()
+            seg.move(to: CGPoint(
+                x: p0.x + dx * CGFloat(Double(i0) / Double(sampleCount)),
+                y: p0.y + dy * CGFloat(Double(i0) / Double(sampleCount))))
+            seg.addLine(to: CGPoint(
+                x: p0.x + dx * CGFloat(Double(i1) / Double(sampleCount)),
+                y: p0.y + dy * CGFloat(Double(i1) / Double(sampleCount))))
+            for j in stride(from: i1, through: i0, by: -1) {
+                seg.addLine(to: innerPts[j])
+            }
+            seg.closeSubpath()
+            gc.fill(
+                seg,
+                with: .linearGradient(
+                    Gradient(stops: [
+                        .init(color: runColor.opacity(peak), location: 0),
+                        .init(color: runColor.opacity(peak * 0.5),
+                              location: 0.5),
+                        .init(color: .clear, location: 1),
+                    ]),
+                    startPoint: mid,
+                    endPoint: gradEnd
+                )
             )
-        )
+        }
 
         // フレーク: 辺をzoneに分け、有無・位置・長さ・太さ・濃さ・
         // 深さをセル固有ハッシュで散らす。強い辺ほど太く・濃く・
@@ -353,7 +404,16 @@ struct EdgeWearPlugin: ShelfPlugin {
                 rect = CGRect(x: c.x - thick / 2, y: c.y - segLen / 2,
                               width: thick, height: segLen)
             }
-            gc.fill(Path(ellipseIn: rect), with: .color(paper.opacity(alpha)))
+            // 色味はフレークごとに引く(帯のランと同じく、隣り合う
+            // 剥げ片で明度・色味が揃わないようにする)
+            let fb = Self.saltFlakeColor + Double(edge.rawValue) * 400
+                + Double(i) * 4
+            let flakeColor = paperTone(
+                whiteness: hash01(fb, context: context),
+                roll: hash01(fb + 1, context: context),
+                variant: hash01(fb + 2, context: context))
+            gc.fill(Path(ellipseIn: rect),
+                    with: .color(flakeColor.opacity(alpha)))
         }
     }
 
@@ -376,7 +436,6 @@ struct EdgeWearPlugin: ShelfPlugin {
         strength: Double, radii: RectangleCornerRadii,
         context: ShelfPluginContext
     ) {
-        let paper = Self.paperColor
         let vertex = corner.point(in: size)
         let inward = corner.inward
         let clipR = corner.clipRadius(radii)
@@ -386,6 +445,19 @@ struct EdgeWearPlugin: ShelfPlugin {
         // sizeKはサイズ側の対応係数(弱い角ほどパッチも小さく)
         let vis = min(1, strength / 0.12)
         let sizeK = CGFloat(0.4 + 0.6 * vis)
+
+        // 要素(0=つぶれパッチ、1・2=楔パッチ、3=紙むけ点)ごとに
+        // 独立した色味を引く。同じ角の中でもパーツの色が揃わず、
+        // 実物の不均一な剥げ色になる
+        func cornerColor(_ element: Int) -> Color {
+            let cb = Self.saltCornerColor + Double(corner.rawValue) * 400
+                + Double(element) * 4
+            return paperTone(
+                whiteness: hash01(cb, context: context),
+                roll: hash01(cb + 1, context: context),
+                variant: hash01(cb + 2, context: context))
+        }
+        let blobColor = cornerColor(0)
 
         // つぶれ本体: 角丸アークの内側を中心とする丸いパッチ。
         // 強い角では半径~10pt(対角線方向に頂点付近から~17pt)まで
@@ -410,8 +482,9 @@ struct EdgeWearPlugin: ShelfPlugin {
             blob,
             with: .radialGradient(
                 Gradient(stops: [
-                    .init(color: paper.opacity(peak), location: 0),
-                    .init(color: paper.opacity(peak * 0.55), location: 0.45),
+                    .init(color: blobColor.opacity(peak), location: 0),
+                    .init(color: blobColor.opacity(peak * 0.55),
+                          location: 0.45),
                     .init(color: .clear, location: 1),
                 ]),
                 center: gCenter,
@@ -428,6 +501,7 @@ struct EdgeWearPlugin: ShelfPlugin {
         let scale = CGFloat(0.5 + 0.5 * strength) * sizeK
         let wedgePeak = min(1, 0.45 + 0.8 * strength) * vis
         for (sideIndex, side) in [sides.0, sides.1].enumerated() {
+            let wedgeColor = cornerColor(1 + sideIndex)
             let salt = 50 + Double(corner.rawValue) * 11
                 + Double(sideIndex) * 3
             let hLen = hash01(salt + 0.11, context: context)
@@ -449,8 +523,9 @@ struct EdgeWearPlugin: ShelfPlugin {
                 wedge,
                 with: .linearGradient(
                     Gradient(stops: [
-                        .init(color: paper.opacity(wedgePeak), location: 0),
-                        .init(color: paper.opacity(wedgePeak * 0.45),
+                        .init(color: wedgeColor.opacity(wedgePeak),
+                              location: 0),
+                        .init(color: wedgeColor.opacity(wedgePeak * 0.45),
                               location: 0.55),
                         .init(color: .clear, location: 1),
                     ]),
@@ -476,7 +551,7 @@ struct EdgeWearPlugin: ShelfPlugin {
             spot,
             with: .radialGradient(
                 Gradient(stops: [
-                    .init(color: paper.opacity(
+                    .init(color: cornerColor(3).opacity(
                         min(0.9, 0.35 + 0.65 * strength) * vis),
                           location: 0),
                     .init(color: .clear, location: 1),
@@ -496,6 +571,38 @@ struct EdgeWearPlugin: ShelfPlugin {
 
     private func resolvedCorners(context: ShelfPluginContext) -> Double {
         min(1, max(0, context.number(Param.corners, default: Self.defaultCorners)))
+    }
+
+    /// 剥げ部分の色。大半はクリーム〜薄茶の紙色(剥げて露出するのは
+    /// 真っ白な紙ではなく日焼けしたボール紙色)をwhitenessで明度・
+    /// 暖かさだけ揺らす。roll < colorVariantRate の少数だけ別の色味に
+    /// する。ScuffsPlugin.lineColorと同じく、variant(0〜1)を3帯に
+    /// 割って種別と帯内位置uを同じ値から取る(別saltを増やさずに
+    /// 種別と明度のばらつきを両立させる)
+    private func paperTone(whiteness w: Double, roll: Double,
+                           variant v: Double) -> Color {
+        guard roll < Self.colorVariantRate else {
+            // クリーム〜薄茶の紙色(明度0.58〜0.78、暖色寄りの彩度。
+            //  白く発色しすぎないよう彩度を持たせて明度を落とす)
+            return Color(hue: 0.085 + 0.025 * w,
+                         saturation: 0.18 + 0.14 * w,
+                         brightness: 0.58 + 0.20 * w)
+        }
+        let sv = v * 3
+        let u = sv - sv.rounded(.down)
+        switch min(Int(sv), 2) {
+        case 0:
+            // 埃っぽいくすみグレー(埃の乗った擦れ)
+            return Color(white: 0.55 + 0.15 * u)
+        case 1:
+            // 厚紙(クラフト紙)の茶(印刷層ごと剥げて下地が出た色)
+            return Color(hue: 0.07 + 0.03 * u,
+                         saturation: 0.30 + 0.15 * u,
+                         brightness: 0.50 + 0.18 * u)
+        default:
+            // 暗い擦り切れ(影や濃い下地の混ざった痕)
+            return Color(white: 0.30 + 0.12 * u)
+        }
     }
 
     /// セル座標からの決定論的疑似乱数(0〜1)。SleeveGlossPluginと
