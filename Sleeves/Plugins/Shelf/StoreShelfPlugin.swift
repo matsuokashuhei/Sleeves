@@ -135,9 +135,7 @@ struct StoreShelfPlugin: ShelfPlugin {
             .options(.init(
                 id: Param.board,
                 label: "Board",
-                choices: WoodMaterial.allCases.map {
-                    .init(id: $0.rawValue, label: $0.label)
-                },
+                choices: WoodMaterial.allCases.map { .init($0) },
                 defaultValue: Self.defaultBoard.rawValue
             )),
             .slider(.init(

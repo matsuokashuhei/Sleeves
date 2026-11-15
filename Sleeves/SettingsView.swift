@@ -715,11 +715,78 @@ private struct PluginOptionsRow: View {
     private var optionsPicker: some View {
         Picker(selection: selectionBinding) {
             ForEach(spec.choices, id: \.id) { choice in
-                Text(LocalizedStringKey(choice.label)).tag(choice.id)
+                if let icon = choice.icon {
+                    Label {
+                        Text(LocalizedStringKey(choice.label))
+                    } icon: {
+                        choiceIcon(icon)
+                    }
+                    // 閉じたボタンではiconとtitleが標準間隔で詰まって
+                    // 見えるため広げる。メニュー項目側はNSMenuItemの
+                    // image+titleで描画されるのでこのスタイルの影響は
+                    // 受けず、開いたメニューの見た目は変わらない
+                    .labelStyle(SwatchLabelStyle())
+                    .tag(choice.id)
+                } else {
+                    Text(LocalizedStringKey(choice.label)).tag(choice.id)
+                }
             }
         } label: {
             Text(LocalizedStringKey(spec.label))
         }
+    }
+
+    /// 選択肢Labelのiconとtitleの間隔を広げるスタイル。
+    /// メニュー項目(NSMenuItem)には影響せず、ピッカーが閉じた
+    /// ボタン表示でのみiconとtitleの間を開く
+    private struct SwatchLabelStyle: LabelStyle {
+        /// メニュー項目の画像とタイトルの間隔に合わせた目安値
+        let spacing: CGFloat = 8
+        func makeBody(configuration: Configuration) -> some View {
+            HStack(spacing: spacing) {
+                configuration.icon
+                configuration.title
+            }
+        }
+    }
+
+    /// 選択肢行の見本(壁の色/質感スウォッチ)。
+    /// macOSの「外観モード」の色見本と同じく丸いスウォッチを
+    /// メニュー行の先頭に出す。
+    /// メニュー項目の画像として出せるのはImage(=NSImage)だけ
+    /// (Circle()等のViewは描画されず、resizable/clipShape等の
+    /// 修飾もメニュー側では無視されて元画像の矩形が出る
+    /// — 2026-11実機確認)。そのため丸く切り抜いたNSImageを
+    /// 自前で描いてからImageに載せる
+    private static let choiceIconSize: CGFloat = 16
+
+    private func choiceIcon(
+        _ icon: PluginParameterSpec.Options.Choice.Icon
+    ) -> Image {
+        let size = NSSize(
+            width: Self.choiceIconSize, height: Self.choiceIconSize)
+        let image = NSImage(size: size, flipped: false) { rect in
+            let oval = NSBezierPath(
+                ovalIn: rect.insetBy(dx: 0.5, dy: 0.5))
+            switch icon {
+            case .color(let r, let g, let b):
+                NSColor(red: r, green: g, blue: b, alpha: 1).setFill()
+                oval.fill()
+            case .texture(let asset):
+                if let tile = NSImage(named: asset) {
+                    NSGraphicsContext.current?.saveGraphicsState()
+                    oval.addClip()
+                    tile.draw(in: rect)
+                    NSGraphicsContext.current?.restoreGraphicsState()
+                }
+            }
+            // 白っぽい見本が地の色に溶けないよう薄い縁を付ける
+            NSColor.separatorColor.setStroke()
+            oval.lineWidth = 0.5
+            oval.stroke()
+            return true
+        }
+        return Image(nsImage: image)
     }
 
     /// 固定列数のグリッドピッカー。各セルは照明(sun)アイコンで、

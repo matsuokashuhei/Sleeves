@@ -45,7 +45,7 @@ struct SleeveGlossPlugin: ShelfPlugin {
     /// 照明の位置。設定画面ではallCasesの並びが3x3グリッドの
     /// 行優先配置になる。rawValueはsettings.jsonへの永続化値なので
     /// 一度決めたら変更しない
-    private enum Position: String, CaseIterable {
+    private enum Position: String, CaseIterable, PluginOption {
         case topLeft = "top-left"
         case topCenter = "top-center"
         case topRight = "top-right"
@@ -93,7 +93,7 @@ struct SleeveGlossPlugin: ShelfPlugin {
 
     /// 照明の色味。rawValueはsettings.jsonへの永続化値。
     /// ビニール越しの淡い反射なので着色は彩度を抑えた近似にする
-    private enum LightColor: String, CaseIterable {
+    private enum LightColor: String, CaseIterable, PluginOption {
         /// 電球色。オレンジがかった温かい光
         case bulb
         /// 温白色。電球色と昼白色の中間
@@ -159,9 +159,7 @@ struct SleeveGlossPlugin: ShelfPlugin {
             .options(.init(
                 id: Param.position,
                 label: "Light Position",
-                choices: Position.allCases.map {
-                    .init(id: $0.rawValue, label: $0.label)
-                },
+                choices: Position.allCases.map { .init($0) },
                 defaultValue: Self.defaultPosition.rawValue,
                 presentation: .grid(columns: 3)
             )),
@@ -175,9 +173,7 @@ struct SleeveGlossPlugin: ShelfPlugin {
             .options(.init(
                 id: Param.color,
                 label: "Light Color",
-                choices: LightColor.allCases.map {
-                    .init(id: $0.rawValue, label: $0.label)
-                },
+                choices: LightColor.allCases.map { .init($0) },
                 defaultValue: Self.defaultColor.rawValue
             )),
         ]
