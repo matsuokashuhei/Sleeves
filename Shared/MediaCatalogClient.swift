@@ -35,7 +35,18 @@ enum MediaCatalogClient {
         }
     }
 
+    /// providerで取得先を振り分ける統合ディスパッチ。
+    /// 呼び出し側(ShelfStore.addFromCatalog / ShelfView.prefetchIfNeeded /
+    /// SleevesAppの--catalog-test)はproviderを意識せずこの1本を呼ぶ。
+    /// spotifyなら認証不要のSpotifyCatalogClientへ委譲する
     static func fetch(_ parsed: MediaURLParser.Parsed) async throws -> MediaEntry {
+        if parsed.provider == .spotify {
+            return try await SpotifyCatalogClient.fetch(parsed)
+        }
+        return try await fetchAppleMusic(parsed)
+    }
+
+    private static func fetchAppleMusic(_ parsed: MediaURLParser.Parsed) async throws -> MediaEntry {
         logger.notice("fetch kind=\(parsed.kind.rawValue, privacy: .public) country=\(parsed.country, privacy: .public) id=\(parsed.id, privacy: .public)")
 
         try await ensureAuthorized()

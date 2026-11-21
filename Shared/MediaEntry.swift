@@ -7,18 +7,27 @@ struct MediaEntry: Codable, Identifiable, Equatable {
         case playlist
     }
 
+    /// 配信元サービス。旧フォーマット(キー無し)はApple Musicとして読む
+    enum Provider: String, Codable {
+        case appleMusic
+        case spotify
+    }
+
     private enum CodingKeys: String, CodingKey {
-        case kind, id, title, artist, country, url, artworkURL, addedAt, slotIndex
+        case kind, provider, id, title, artist, country, url, artworkURL, addedAt, slotIndex
     }
 
     let kind: Kind
+    var provider: Provider = .appleMusic
     /// アルバム: 数字列のカタログID / プレイリスト: "pl.xxx"
+    /// Spotify: base62(22文字前後)のID
     let id: String
     var title: String
     /// アルバム: アーティスト名 / プレイリスト: キュレーター名
     var artist: String
+    /// Apple Musicのストアフロント。Spotifyにはその概念が無いので ""
     var country: String
-    /// Apple MusicのURL
+    /// Apple Music / SpotifyのURL
     var url: String
     var artworkURL: String
     var addedAt: Date
@@ -45,6 +54,9 @@ extension MediaEntry {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         kind = try container.decode(Kind.self, forKey: .kind)
+        // providerは新設キー。旧フォーマット(キー欠落)・未知値・型不正は
+        // slotIndexと同じ方針でappleMusicに倒す
+        provider = (try? container.decode(Provider.self, forKey: .provider)) ?? .appleMusic
         id = try container.decode(String.self, forKey: .id)
         title = try container.decode(String.self, forKey: .title)
         artist = try container.decode(String.self, forKey: .artist)
@@ -245,15 +257,20 @@ enum ShelfPlacement {
     }
 }
 
-/// Apple MusicのURL/ID文字列を解析する。
+/// Apple Music / SpotifyのURL・ID文字列を解析する。
 /// 受け付ける形式:
 ///   1440842296
 ///   https://music.apple.com/jp/album/brown-sugar/1440842296  (?i=, music://も可)
 ///   https://music.apple.com/jp/playlist/lo-fi-japan/pl.38eb70f47b834187a21cf4e8e5833f35
+///   https://open.spotify.com/album/<id>  (?si=, intl-XXプレフィックスも可)
+///   https://open.spotify.com/playlist/<id>
+///   spotify:album:<id> / spotify:playlist:<id>
 enum MediaURLParser {
 
     struct Parsed {
         let kind: MediaEntry.Kind
+        let provider: MediaEntry.Provider
+        /// Apple Musicのストアフロント。Spotifyでは未使用("")
         let country: String
         let id: String
     }
@@ -261,9 +278,14 @@ enum MediaURLParser {
     static func parse(_ raw: String) -> Parsed? {
         var text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
 
+        // spotify: URI形式
+        if text.lowercased().hasPrefix("spotify:") {
+            return parseSpotifyURI(text)
+        }
+
         // 素の数字ID → アルバム扱い
         if let id = Int(text), id > 100_000 {
-            return Parsed(kind: .album, country: "jp", id: String(id))
+            return Parsed(kind: .album, provider: .appleMusic, country: "jp", id: String(id))
         }
 
         if text.contains("music.apple.com") {
@@ -274,9 +296,20 @@ enum MediaURLParser {
             }
         }
 
+        // music.apple.comと同じくスキーム省略を補完する
+        // (これが無いとURL.hostが取れずparse失敗になる)
+        if text.contains("open.spotify.com"), !text.hasPrefix("http") {
+            text = "https://" + text
+        }
+
         guard let url = URL(string: text),
-              let host = url.host?.lowercased(),
-              host.hasSuffix("music.apple.com") else { return nil }
+              let host = url.host?.lowercased() else { return nil }
+
+        if host == "open.spotify.com" {
+            return parseSpotifyWebURL(url)
+        }
+
+        guard host.hasSuffix("music.apple.com") else { return nil }
 
         let parts = url.path.split(separator: "/").map(String.init)
         guard parts.count >= 2 else { return nil }
@@ -296,16 +329,52 @@ enum MediaURLParser {
             guard let number = rest.reversed().first(where: { Int($0).map { $0 > 100_000 } == true }) else {
                 return nil
             }
-            return Parsed(kind: .album, country: country, id: number)
+            return Parsed(kind: .album, provider: .appleMusic, country: country, id: number)
         case "playlist":
             let rest = Array(parts[(index + 1)...])
             guard let plID = rest.first(where: { $0.hasPrefix("pl.") && $0.count > 3 }) else {
                 return nil
             }
-            return Parsed(kind: .playlist, country: country, id: plID)
+            return Parsed(kind: .playlist, provider: .appleMusic, country: country, id: plID)
         default:
             return nil
         }
+    }
+
+    // MARK: - Spotify
+
+    /// `spotify:album:<id>` / `spotify:playlist:<id>` のURI形式
+    private static func parseSpotifyURI(_ text: String) -> Parsed? {
+        let parts = text.split(separator: ":", omittingEmptySubsequences: false).map(String.init)
+        guard parts.count == 3, parts[0].lowercased() == "spotify" else { return nil }
+        guard let kind = spotifyKind(parts[1]), isValidSpotifyID(parts[2]) else { return nil }
+        return Parsed(kind: kind, provider: .spotify, country: "", id: parts[2])
+    }
+
+    /// `https://open.spotify.com/<type>/<id>` と `intl-<locale>/` プレフィックス付き。
+    /// クエリ(?si=等)はURLのpathに含まれないので自然に無視される
+    private static func parseSpotifyWebURL(_ url: URL) -> Parsed? {
+        let parts = url.path.split(separator: "/").map(String.init)
+        var index = 0
+        if parts.first?.hasPrefix("intl-") == true { index = 1 }
+        guard index + 1 < parts.count else { return nil }
+        guard let kind = spotifyKind(parts[index]), isValidSpotifyID(parts[index + 1]) else { return nil }
+        return Parsed(kind: kind, provider: .spotify, country: "", id: parts[index + 1])
+    }
+
+    private static func spotifyKind(_ type: String) -> MediaEntry.Kind? {
+        switch type.lowercased() {
+        case "album": return .album
+        case "playlist": return .playlist
+        default: return nil  // track/artist/episode/show等は対象外
+        }
+    }
+
+    /// SpotifyのID。実際は22文字のbase62だが緩く検証する
+    /// (固定22を必須にしない。文字種だけは厳密に見る)
+    private static func isValidSpotifyID(_ id: String) -> Bool {
+        guard id.count >= 15, id.count <= 30 else { return false }
+        return id.range(of: #"^[A-Za-z0-9]+$"#, options: .regularExpression) != nil
     }
 }
 
@@ -333,5 +402,100 @@ struct ShelfDragPayload: Codable {
             return nil
         }
         return try? JSONDecoder().decode(ShelfDragPayload.self, from: data)
+    }
+}
+
+/// Spotifyの公開ページHTMLからメタ情報を取り出す純ロジック。
+/// SpotifyCatalogClient(ネットワーク側)から分離してここに置くのは、
+/// このファイルがテストターゲットに直接コンパイルされるため
+/// (Shared/MediaEntry.swift はSleevesTestsのsourcesに含まれる)。
+enum SpotifyPageParser {
+
+    /// HTML中の `<meta property="<property>" content="..."/>` の
+    /// content属性値を返す。属性の順序(contentが先/後)や他の属性の
+    /// 有無に影響されないよう、タグを拾ってから属性単位で解釈する。
+    /// content値のHTMLエンティティはデコード済みで返す。
+    /// 見つからなければnil
+    static func metaContent(in html: String, property: String) -> String? {
+        guard let tagPattern = try? NSRegularExpression(pattern: #"<meta\b[^>]*>"#, options: [.caseInsensitive]) else {
+            return nil
+        }
+        let range = NSRange(html.startIndex..., in: html)
+        for match in tagPattern.matches(in: html, range: range) {
+            guard let tagRange = Range(match.range, in: html) else { continue }
+            let tag = String(html[tagRange])
+            guard attributeValue(in: tag, name: "property") == property else { continue }
+            if let content = attributeValue(in: tag, name: "content") {
+                return decodeHTMLEntities(content)
+            }
+        }
+        return nil
+    }
+
+    /// og:description からアーティスト/キュレーター名を取り出す。
+    /// " · "(U+00B7)区切りのセグメント列:
+    /// - アルバム: `"Pink Floyd · album · 1973 · 10 songs"` → 先頭セグメント
+    /// - プレイリスト: `"Playlist · Spotify · 50 items · 33.6M saves"` →
+    ///   先頭が"Playlist"なら2番目セグメント。それ以外は"Spotify"に倒す
+    static func artist(fromOgDescription desc: String, kind: MediaEntry.Kind) -> String {
+        let segments = desc.components(separatedBy: "\u{00B7}")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        switch kind {
+        case .album:
+            return segments.first ?? ""
+        case .playlist:
+            if segments.count >= 2, segments[0] == "Playlist" { return segments[1] }
+            return "Spotify"
+        }
+    }
+
+    /// 主要なHTMLエンティティと数値参照(&#NNN;/&#xHH;)をデコードする。
+    /// `&amp;` は必ず最後に処理する(先にやると `&amp;lt;` が `<` に
+    /// 二重デコードされる)
+    static func decodeHTMLEntities(_ text: String) -> String {
+        var result = text
+        if let pattern = try? NSRegularExpression(pattern: #"&#(x[0-9A-Fa-f]+|[0-9]+);"#) {
+            let range = NSRange(result.startIndex..., in: result)
+            // 後ろから置き換えて前方のrangeを狂わせない
+            for match in pattern.matches(in: result, range: range).reversed() {
+                guard let whole = Range(match.range, in: result),
+                      let numRange = Range(match.range(at: 1), in: result) else { continue }
+                let token = result[numRange]
+                let scalar: UInt32?
+                if token.hasPrefix("x") {
+                    scalar = UInt32(token.dropFirst(), radix: 16)
+                } else {
+                    scalar = UInt32(token)
+                }
+                if let scalar, let uni = Unicode.Scalar(scalar) {
+                    result.replaceSubrange(whole, with: Character(uni).description)
+                }
+            }
+        }
+        for (entity, replacement) in [
+            ("&quot;", "\""), ("&apos;", "'"), ("&lt;", "<"),
+            ("&gt;", ">"), ("&nbsp;", " "), ("&amp;", "&"),
+        ] {
+            result = result.replacingOccurrences(of: entity, with: replacement)
+        }
+        return result
+    }
+
+    /// `<meta ...>`タグ文字列から指定属性の値を拾う。
+    /// `"..."`/`'...'` の両方の引用形式に対応
+    private static func attributeValue(in tag: String, name: String) -> String? {
+        for quote in ["\"", "'"] {
+            // 属性名の直前に空白を要求する(data-content等の別属性名に
+            // 部分一致しないため)
+            if let pattern = try? NSRegularExpression(
+                pattern: "\\s\(name)\\s*=\\s*\(quote)([^\(quote)]*)\(quote)",
+                options: [.caseInsensitive]
+            ), let match = pattern.firstMatch(in: tag, range: NSRange(tag.startIndex..., in: tag)),
+               let valueRange = Range(match.range(at: 1), in: tag) {
+                return String(tag[valueRange])
+            }
+        }
+        return nil
     }
 }

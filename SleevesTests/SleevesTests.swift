@@ -471,3 +471,200 @@ struct ShelfPlacementTests {
         #expect(slotsByID(result ?? []) == ["x": 2])
     }
 }
+
+/// Spotify URL/URIのパース(MediaURLParser)テスト。
+/// MediaEntry.swiftはテストターゲットに直接コンパイルされる
+struct SpotifyURLParserTests {
+
+    @Test func spotifyAlbumURL() {
+        let parsed = MediaURLParser.parse("https://open.spotify.com/album/4LH4d3cOWNNsVw41Gqt2kv")
+        #expect(parsed?.kind == .album)
+        #expect(parsed?.provider == .spotify)
+        #expect(parsed?.id == "4LH4d3cOWNNsVw41Gqt2kv")
+    }
+
+    @Test func spotifyPlaylistURL() {
+        let parsed = MediaURLParser.parse("https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M")
+        #expect(parsed?.kind == .playlist)
+        #expect(parsed?.provider == .spotify)
+        #expect(parsed?.id == "37i9dQZF1DXcBWIGoYBM5M")
+    }
+
+    @Test func spotifyIntlPrefixedURL() {
+        let parsed = MediaURLParser.parse("https://open.spotify.com/intl-ja/album/4LH4d3cOWNNsVw41Gqt2kv")
+        #expect(parsed?.kind == .album)
+        #expect(parsed?.id == "4LH4d3cOWNNsVw41Gqt2kv")
+    }
+
+    @Test func spotifyURLWithTrackingQuery() {
+        // ?si=... の共有トラッキングパラメータはパス解析の対象外
+        let parsed = MediaURLParser.parse("https://open.spotify.com/album/4LH4d3cOWNNsVw41Gqt2kv?si=abc123")
+        #expect(parsed?.kind == .album)
+        #expect(parsed?.id == "4LH4d3cOWNNsVw41Gqt2kv")
+    }
+
+    @Test func schemelessSpotifyURL() {
+        // スキーム省略もmusic.apple.comと同じくhttps://補完される
+        let parsed = MediaURLParser.parse("open.spotify.com/album/4LH4d3cOWNNsVw41Gqt2kv")
+        #expect(parsed?.kind == .album)
+        #expect(parsed?.provider == .spotify)
+        #expect(parsed?.id == "4LH4d3cOWNNsVw41Gqt2kv")
+    }
+
+    @Test func spotifyURIForms() {
+        let album = MediaURLParser.parse("spotify:album:4LH4d3cOWNNsVw41Gqt2kv")
+        #expect(album?.kind == .album)
+        #expect(album?.provider == .spotify)
+        #expect(album?.id == "4LH4d3cOWNNsVw41Gqt2kv")
+        let playlist = MediaURLParser.parse("spotify:playlist:37i9dQZF1DXcBWIGoYBM5M")
+        #expect(playlist?.kind == .playlist)
+        #expect(playlist?.id == "37i9dQZF1DXcBWIGoYBM5M")
+    }
+
+    @Test func spotifyNonAlbumPlaylistTypesRejected() {
+        // track/artist/episode/show等は対象外
+        #expect(MediaURLParser.parse("https://open.spotify.com/track/4LH4d3cOWNNsVw41Gqt2kv") == nil)
+        #expect(MediaURLParser.parse("https://open.spotify.com/artist/4LH4d3cOWNNsVw41Gqt2kv") == nil)
+        #expect(MediaURLParser.parse("https://open.spotify.com/episode/4LH4d3cOWNNsVw41Gqt2kv") == nil)
+        #expect(MediaURLParser.parse("spotify:track:4LH4d3cOWNNsVw41Gqt2kv") == nil)
+    }
+
+    @Test func spotifyInvalidIDRejected() {
+        // 短すぎるID・非base62文字を含むIDは拒否
+        #expect(MediaURLParser.parse("https://open.spotify.com/album/abc") == nil)
+        #expect(MediaURLParser.parse("https://open.spotify.com/album/4LH4d3cOWNNsVw41Gqt2k-") == nil)
+        #expect(MediaURLParser.parse("spotify:album:") == nil)
+    }
+
+    @Test func appleMusicURLsKeepAppleProvider() {
+        // 既存経路のproviderはappleMusicのまま
+        #expect(MediaURLParser.parse("https://music.apple.com/jp/album/x/1440842296")?.provider == .appleMusic)
+        #expect(MediaURLParser.parse("1440842296")?.provider == .appleMusic)
+    }
+}
+
+/// MediaEntry.providerの後方互換デコードテスト
+struct MediaEntryProviderTests {
+
+    private func decode(_ json: String) -> MediaEntry? {
+        try? JSONDecoder().decode(MediaEntry.self, from: Data(json.utf8))
+    }
+
+    @Test func missingProviderKeyDecodesAsAppleMusic() {
+        // 旧フォーマット(providerキー無し)はappleMusicに倒す
+        let entry = decode(#"{"kind":"album","id":"1440842296","title":"t","artist":"a","country":"jp","url":"u","artworkURL":"","addedAt":0}"#)
+        #expect(entry?.provider == .appleMusic)
+        // slotIndexも同時に後方互換(未配置=-1)
+        #expect(entry?.slotIndex == -1)
+    }
+
+    @Test func spotifyProviderDecodes() {
+        let entry = decode(#"{"kind":"playlist","provider":"spotify","id":"37i9dQZF1DXcBWIGoYBM5M","title":"t","artist":"Spotify","country":"","url":"https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M","artworkURL":"","addedAt":0,"slotIndex":2}"#)
+        #expect(entry?.provider == .spotify)
+        #expect(entry?.slotIndex == 2)
+    }
+
+    @Test func unknownProviderValueDecodesAsAppleMusic() {
+        // 未知のprovider値はappleMusicに倒す(slotIndexの方針と同じ)
+        let entry = decode(#"{"kind":"album","provider":"deezer","id":"1","title":"t","artist":"a","country":"jp","url":"u","artworkURL":"","addedAt":0}"#)
+        #expect(entry?.provider == .appleMusic)
+    }
+
+    @Test func providerRoundTrips() throws {
+        var entry = placementEntry("s", slot: 0)
+        entry.provider = .spotify
+        let data = try JSONEncoder().encode(entry)
+        let decoded = try JSONDecoder().decode(MediaEntry.self, from: data)
+        #expect(decoded.provider == .spotify)
+        #expect(decoded == entry)
+    }
+}
+
+/// SpotifyのページHTML(og:メタタグ)パース純ロジックのテスト
+struct SpotifyPageParserTests {
+
+    // MARK: - metaContent
+
+    @Test func metaContentFindsStandardTag() {
+        let html = #"<html><head><meta property="og:description" content="Pink Floyd · album · 1973 · 10 songs"/></head></html>"#
+        #expect(SpotifyPageParser.metaContent(in: html, property: "og:description") == "Pink Floyd · album · 1973 · 10 songs")
+    }
+
+    @Test func metaContentFindsReversedAttributeOrder() {
+        // contentがpropertyより先に来る形も拾う
+        let html = #"<meta content="Playlist · Spotify · 50 items" property="og:description" data-rh="true">"#
+        #expect(SpotifyPageParser.metaContent(in: html, property: "og:description") == "Playlist · Spotify · 50 items")
+    }
+
+    @Test func metaContentPicksRequestedPropertyOnly() {
+        let html = """
+        <meta property="og:title" content="Today's Top Hits"/>
+        <meta property="og:description" content="Playlist · Spotify · 50 items"/>
+        <meta property="og:image" content="https://example.com/x.jpg"/>
+        """
+        #expect(SpotifyPageParser.metaContent(in: html, property: "og:title") == "Today's Top Hits")
+        #expect(SpotifyPageParser.metaContent(in: html, property: "og:description") == "Playlist · Spotify · 50 items")
+        #expect(SpotifyPageParser.metaContent(in: html, property: "og:image") == "https://example.com/x.jpg")
+    }
+
+    @Test func metaContentDecodesEntities() {
+        let html = #"<meta property="og:title" content="Tom &amp; Jerry &#8212; &quot;Show&quot;"/>"#
+        #expect(SpotifyPageParser.metaContent(in: html, property: "og:title") == "Tom & Jerry — \"Show\"")
+    }
+
+    @Test func metaContentReturnsNilWhenMissing() {
+        #expect(SpotifyPageParser.metaContent(in: "<html></html>", property: "og:description") == nil)
+    }
+
+    // MARK: - artist(fromOgDescription:)
+
+    @Test func artistFromAlbumDescription() {
+        // " · "(U+00B7)区切りの先頭セグメント
+        #expect(SpotifyPageParser.artist(
+            fromOgDescription: "Pink Floyd · album · 1973 · 10 songs", kind: .album
+        ) == "Pink Floyd")
+    }
+
+    @Test func artistFromPlaylistDescription() {
+        // 先頭が"Playlist"なら2番目セグメントがキュレーター
+        #expect(SpotifyPageParser.artist(
+            fromOgDescription: "Playlist · Spotify · 50 items · 33.6M saves", kind: .playlist
+        ) == "Spotify")
+    }
+
+    @Test func artistFromNonstandardPlaylistDescription() {
+        // "Playlist · ..."形式でなければ"Spotify"に倒す
+        #expect(SpotifyPageParser.artist(
+            fromOgDescription: "50 items · 33.6M saves", kind: .playlist
+        ) == "Spotify")
+        #expect(SpotifyPageParser.artist(
+            fromOgDescription: "", kind: .playlist
+        ) == "Spotify")
+    }
+
+    @Test func artistFromShortDescription() {
+        // セグメント不足の変則: アルバムは先頭そのもの、空なら空
+        #expect(SpotifyPageParser.artist(
+            fromOgDescription: "Single Artist", kind: .album
+        ) == "Single Artist")
+        #expect(SpotifyPageParser.artist(
+            fromOgDescription: "", kind: .album
+        ) == "")
+    }
+
+    // MARK: - decodeHTMLEntities
+
+    @Test func decodesNamedAndNumericEntities() {
+        #expect(SpotifyPageParser.decodeHTMLEntities("&amp;") == "&")
+        #expect(SpotifyPageParser.decodeHTMLEntities("&lt;&gt;") == "<>")
+        #expect(SpotifyPageParser.decodeHTMLEntities("&quot;") == "\"")
+        #expect(SpotifyPageParser.decodeHTMLEntities("&#39;") == "'")
+        #expect(SpotifyPageParser.decodeHTMLEntities("&#x27;") == "'")
+        #expect(SpotifyPageParser.decodeHTMLEntities("&apos;") == "'")
+    }
+
+    @Test func doesNotDoubleDecodeAmpersand() {
+        // &amp;lt; → "&lt;"(エスケープ済みリテラル)であって"<"ではない
+        #expect(SpotifyPageParser.decodeHTMLEntities("&amp;lt;") == "&lt;")
+    }
+}

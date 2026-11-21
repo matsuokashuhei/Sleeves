@@ -138,6 +138,16 @@ final class ShelfManager: ObservableObject {
         )
     }
 
+    /// 開いているシェルフのいずれかにSpotifyエントリが登録されているか。
+    /// entries全体(slotIndex>=capacityの非表示エントリも含む)を見る。
+    /// PlaybackMonitorのSpotifyポーリングをゲートするために使う —
+    /// Spotify不使用のユーザーに毎2秒osascriptをspawnさせないため
+    var anyOpenShelfHasSpotify: Bool {
+        openShelfIDs
+            .compactMap { stores[$0] }
+            .contains { $0.entries.contains { $0.provider == .spotify } }
+    }
+
     // MARK: - 永続化・マイグレーション
 
     private static var registryFile: URL {

@@ -224,6 +224,32 @@ pkill -x Sleeves; open .build/Build/Products/Debug/Sleeves.app
   ショートカット名解決に失敗する**(ターミナルからは成功するのに)。URLスキーム経由なら問題ない
 - `SystemSettings → プライバシーとセキュリティ → オートメーション → Sleeves → Shortcuts Events`
   をONにしないと、アプリプロセスからのShortcuts Events照会が空リストを返す
+- **Spotify対応**(2026-12-14 実装)。`MediaEntry.provider`
+  (`appleMusic`/`spotify`。後方互換デコードでキー欠落・未知値はappleMusic)で
+  分岐する。`MediaURLParser`は open.spotify.com album/playlist
+  (intl-XX・?si=許容)と `spotify:<kind>:<id>` URIを受理
+  (IDはbase62・長さ緩く検証。track/artist等は拒否)
+  - **再生**: `tell application "Spotify" to play track "spotify:<kind>:<id>"`
+    — アルバムもプレイリストもこれで再生できる(実機検証済み)。
+    停止は同じくAppleScriptの `pause`(is runningガード付き)、
+    監視は `player state` + `album of current track`
+    (PlaybackEngine.spotifyNowPlayingInfo)。
+    プレイリストはAppleScriptからコンテキストが取れないので
+    activeEntryID方式(in-app playlistと同じ)。ポーリングは開いている
+    シェルフにspotifyエントリが居るときだけ(2秒おきosascriptの
+    無駄spawn防止。ShelfManager.anyOpenShelfHasSpotify)
+  - **メタデータ**: 認証不要。oEmbed
+    (`https://open.spotify.com/oembed?url=<canonical>`)でタイトル+
+    サムネイル、ページHTMLの `og:description` からアーティスト名
+    (SpotifyCatalogClient)。`og:description` は " · "(U+00B7)区切りで
+    アルバム=`"Pink Floyd · album · 1973 · 10 songs"`(先頭セグメント)、
+    プレイリスト=`"Playlist · Spotify · 50 items · 33.6M saves"`
+    (先頭が"Playlist"なら2番目、以外は"Spotify")。og失敗時は
+    artist=""で縮退。og:titleは装飾付きなので使わない(oEmbedを正とする)。
+    ※ページは**ブラウザ系User-Agentにはogタグ無しのJSシェルを返す**
+    ので、ページ取得は非ブラウザUA(curl/8.0)が必須(2026-11-21実測)
+  - og解析の純ロジックは `SpotifyPageParser`(Shared/MediaEntry.swift。
+    テストターゲットにコンパイルされる配置)
 
 ## ウィンドウの余白と信号ボタン(2026-10-25 実装・実機検証済み)
 

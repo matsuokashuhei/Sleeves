@@ -1075,7 +1075,7 @@ struct ShelfView: View {
             Self.logger.notice("drop add: parse failed for '\(text ?? "nil", privacy: .public)'")
             return false
         }
-        Self.logger.notice("drop add: parsed kind=\(parsed.kind.rawValue, privacy: .public) id=\(parsed.id, privacy: .public) slot=\(s ?? -1, privacy: .public)")
+        Self.logger.notice("drop add: parsed provider=\(parsed.provider.rawValue, privacy: .public) kind=\(parsed.kind.rawValue, privacy: .public) id=\(parsed.id, privacy: .public) slot=\(s ?? -1, privacy: .public)")
         // URL+テキストの両方を供するドラッグでURLゾーンとStringゾーンが
         // 両方performされた場合、同じidの追加Taskが2つ走る。後発は
         // スキップする(.addedと.duplicateアラートが同時に出るのを防ぐ)。
@@ -1133,7 +1133,7 @@ struct ShelfView: View {
     private func transferDrop(_ payload: ShelfDragPayload, atSlot s: Int?) -> Bool {
         let entry = payload.entry
         Self.logger.notice("cross-shelf transfer: '\(entry.title, privacy: .public)' \(payload.sourceShelfID, privacy: .public)→\(self.shelfID, privacy: .public) slot=\(s ?? -1, privacy: .public)")
-        if store.contains(entry.id) {
+        if store.contains(entry.id, provider: entry.provider) {
             Self.logger.notice("cross-shelf transfer rejected: duplicate id=\(entry.id, privacy: .public)")
             let kindName = String(localized: entry.kind == .album ? "album" : "playlist")
             addError = String(localized: "This \(kindName) is already on the shelf.")
@@ -1292,15 +1292,15 @@ struct ShelfView: View {
     /// カタログ取得+アートワーク取得の先回り。登録済み・取得中/取得済みは
     /// 何もしない(ドロップ時はprefetchedEntriesの結果を再利用する)
     private func prefetchIfNeeded(_ parsed: MediaURLParser.Parsed) {
-        guard !store.contains(parsed.id) else {
-            Self.logger.notice("prefetch skipped: already registered id=\(parsed.id, privacy: .public)")
+        guard !store.contains(parsed.id, provider: parsed.provider) else {
+            Self.logger.notice("prefetch skipped: already registered provider=\(parsed.provider.rawValue, privacy: .public) id=\(parsed.id, privacy: .public)")
             return
         }
         guard prefetchedEntries[parsed.id] == nil else {
             Self.logger.debug("prefetch skipped: already in-flight/done id=\(parsed.id, privacy: .public)")
             return
         }
-        Self.logger.notice("prefetch start id=\(parsed.id, privacy: .public)")
+        Self.logger.notice("prefetch start provider=\(parsed.provider.rawValue, privacy: .public) id=\(parsed.id, privacy: .public)")
         prefetchedEntries[parsed.id] = Task {
             do {
                 let entry = try await MediaCatalogClient.fetch(parsed)
@@ -1310,7 +1310,7 @@ struct ShelfView: View {
                 // 失敗したTaskをdictに残すと、次のドラッグでprefetchが
                 // スキップされドロップ時に古いエラーが消費される。
                 // 自分で除いておけば次回は新規fetchに戻る
-                Self.logger.notice("prefetch failed id=\(parsed.id, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                Self.logger.notice("prefetch failed provider=\(parsed.provider.rawValue, privacy: .public) id=\(parsed.id, privacy: .public): \(error.localizedDescription, privacy: .public)")
                 await MainActor.run {
                     prefetchedEntries.removeValue(forKey: parsed.id)
                 }

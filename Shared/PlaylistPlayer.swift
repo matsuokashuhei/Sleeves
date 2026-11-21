@@ -14,8 +14,9 @@ enum PlaylistPlayer {
     static func play(_ entry: MediaEntry) async throws {
         logger.notice("play() start id=\(entry.id, privacy: .public) authStatus=\(MusicAuthorization.currentStatus.rawValue, privacy: .public)")
 
-        // Musicアプリが再生中なら先に止める(二重再生の防止)
+        // MusicアプリとSpotifyが再生中なら先に止める(二重再生の防止)
         await PlaybackEngine.stopMusicApp()
+        await PlaybackEngine.stopSpotifyApp()
 
         try await MediaCatalogClient.ensureAuthorized()
 
