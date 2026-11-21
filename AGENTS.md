@@ -229,8 +229,32 @@ pkill -x Sleeves; open .build/Build/Products/Debug/Sleeves.app
   分岐する。`MediaURLParser`は open.spotify.com album/playlist
   (intl-XX・?si=許容)と `spotify:<kind>:<id>` URIを受理
   (IDはbase62・長さ緩く検証。track/artist等は拒否)
-  - **再生**: `tell application "Spotify" to play track "spotify:<kind>:<id>"`
-    — アルバムもプレイリストもこれで再生できる(実機検証済み)。
+  - **再生**: `play track "spotify:<kind>:<id>"` — アルバムも
+    プレイリストもこれで再生できる(実機検証済み)。
+    ただし **`play track` は起動済みでもSpotifyをactivateして
+    フォアグラウンドへ出す**(2026-11-21実機。launchだけでは
+    未然防止にならない)。そのため再生開始シーケンスは以下
+    (PlaybackEngine.playSpotify):
+    `application "Spotify" is running` で起動判定→起動済みなら
+    従来どおり直接 `play track`、未起動ならactivate/reopen
+    イベントを伴わない `tell application "Spotify" to launch` で
+    起動し、AE受付開始まで `play track` を0.1秒間隔・最大50回
+    リトライする(一時エラー
+    — "Application isn't running"/-600、"Connection is invalid"/-609
+    — のみリトライ継続。-1743 TCC拒否等の恒久エラーは即throw)。
+    保険として成功後はfrontmost watchdogが約6秒間
+    `NSWorkspace.frontmostApplication` を監視し、frontmostが
+    `com.spotify.client` になるたび `NSApp.activate()` でSleevesへ
+    アクティブを取り戻す(deadlineまで継続監視。
+    `--catalog-test` CLI経路ではwatchdogスキップ)。
+    ※2026-11-21実機検証済み: 冷起動ではplay trackがattempt 1で
+    成功(AEはlaunch後の受付開始までキューイングされる模様)。
+    ただしSpotifyは起動シーケンス中に**約1.6秒間・11回**自分を
+    activateし直すため、watchdogはone-shotではなく期限まで
+    継続監視する必要がある(one-shotだと2回目以降のactivateで
+    負ける)。`launch`はactivateを送らないが、Spotifyの窓自体は
+    バックグラウンドで開く。最終状態はSleevesがアクティブ・
+    Spotifyは背面で再生中を実測確認済み。
     停止は同じくAppleScriptの `pause`(is runningガード付き)、
     監視は `player state` + `album of current track`
     (PlaybackEngine.spotifyNowPlayingInfo)。

@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import os
 
@@ -218,18 +219,147 @@ enum PlaybackEngine {
 
     // MARK: - Spotify(Spotify.appをAppleScriptで制御)
 
+    /// 冷起動直後にSpotifyがApple Eventを受け付けるまでの
+    /// `play track` リトライ回数/間隔(秒)
+    private static let spotifyPlayRetryCount = 50
+    private static let spotifyPlayRetryInterval: TimeInterval = 0.1
+
+    /// 再生要求後にSpotifyがフォアグラウンドへ出た場合に監視する時間(秒)
+    private static let spotifyFrontmostWatchDuration: TimeInterval = 6
+
+    /// Spotifyのbundle ID(フォアグラウンド監視の判定に使う)
+    private static let spotifyBundleID = "com.spotify.client"
+
     /// Spotify.appで `spotify:<kind>:<id>` のURIを再生する。
     /// アルバムもプレイリストも `play track` で再生できる(実機検証済み)。
-    /// `tell application "Spotify"` は未起動なら起動する(再生には
-    /// 起動が必要なのでここではis runningガードを付けない)。
+    ///
+    /// フォアグラウンド化の防止(未然防止+保険の2段):
+    /// - 起動済みなら従来どおり直接 `play track` を送るだけ。
+    /// - 未起動なら `tell application "Spotify" to launch` で起動する。
+    ///   `launch` はactivate/reopenイベントを送らずに起動するため
+    ///   Spotifyはフォアグラウンドへ出ない(`tell` 対象を未起動のまま
+    ///   起動させるとactivateを伴うのでその形は使わない)。
+    ///   launch直後はApple Eventをまだ受け付けない場合があるため、
+    ///   `play track` は0.1秒間隔・最大50回リトライして成功を待つ。
+    /// - 保険として、再生要求成功後は startSpotifyFrontmostWatchdog() が
+    ///   約6秒間frontmostを監視し、Spotifyがフォアグラウンドへ出たら
+    ///   NSApp.activate()でSleeves側がアクティブを取り戻す。
+    ///
     /// 未インストール・コマンド失敗はosascriptの非0終了→PlaybackError.failed
     private static func playSpotify(_ entry: MediaEntry) async throws {
         // 本アプリ内プレイヤーとMusicアプリが再生中なら先に止める
         // (二重再生の防止。playAlbum/PlaylistPlayer.playと対称)
         PlaylistPlayer.stop()
         await stopMusicApp()
-        let script = "tell application \"Spotify\" to play track \"spotify:\(entry.kind.rawValue):\(entry.id)\""
-        try await runTool("/usr/bin/osascript", ["-e", script])
+
+        let uri = "spotify:\(entry.kind.rawValue):\(entry.id)"
+        let playScript = "tell application \"Spotify\" to play track \"\(uri)\""
+
+        // `is running` は起動させずに起動状態だけ調べられる。
+        // 未インストールならosascript自体が失敗し、try?でnil→false扱い
+        // →冷起動経路の `launch` がやはり失敗してPlaybackError.failedになる
+        // (従来どおりエラーは握り潰さない)
+        let runningOutput = try? await runTool(
+            "/usr/bin/osascript",
+            ["-e", "application \"Spotify\" is running"],
+            captureOutput: true
+        )
+        let isRunning = runningOutput?
+            .trimmingCharacters(in: .whitespacesAndNewlines) == "true"
+
+        if isRunning {
+            logger.notice("spotify: already running; sending play track directly uri=\(uri, privacy: .public)")
+            try await runTool("/usr/bin/osascript", ["-e", playScript])
+        } else {
+            // 冷起動経路: activateを伴わない `launch` で起動し、
+            // Apple Event受付開始まで `play track` をリトライする
+            logger.notice("spotify: not running; cold launch without activation uri=\(uri, privacy: .public)")
+            try await runTool("/usr/bin/osascript", ["-e", "tell application \"Spotify\" to launch"])
+            var lastError: Error?
+            var succeeded = false
+            for attempt in 1...Self.spotifyPlayRetryCount {
+                try Task.checkCancellation()
+                do {
+                    try await runTool("/usr/bin/osascript", ["-e", playScript])
+                    logger.notice("spotify: play track succeeded on attempt \(attempt, privacy: .public)")
+                    succeeded = true
+                    break
+                } catch {
+                    lastError = error
+                    // PlaybackError.failedのdetailはosascriptのstdout+stderr
+                    // テキスト。なければlocalizedDescriptionをマッチ対象にする
+                    let detail: String
+                    if case .failed(let text) = error as? PlaybackError {
+                        detail = text
+                    } else {
+                        detail = error.localizedDescription
+                    }
+                    // 一時的な「起動中でAE未受付」エラーだけリトライ継続。
+                    // TCC拒否(-1743)・構文エラー等の恒久エラーは
+                    // 50回待っても治らないので即throwして抜ける
+                    guard Self.isSpotifyTransientAEError(detail) else {
+                        logger.error("spotify: non-transient error on attempt \(attempt, privacy: .public); aborting retry: \(detail, privacy: .public)")
+                        throw error
+                    }
+                    logger.notice("spotify: play track attempt \(attempt, privacy: .public)/\(Self.spotifyPlayRetryCount, privacy: .public) failed: \(detail, privacy: .public)")
+                    try? await Task.sleep(nanoseconds: UInt64(Self.spotifyPlayRetryInterval * 1_000_000_000))
+                }
+            }
+            guard succeeded else {
+                logger.error("spotify: play track gave up after \(Self.spotifyPlayRetryCount, privacy: .public) attempts")
+                throw lastError ?? PlaybackError.failed("play track failed after cold launch")
+            }
+        }
+
+        startSpotifyFrontmostWatchdog()
+    }
+
+    /// osascript経由のApple Eventエラーが「Spotify起動中でAE未受付」の
+    /// 一時的なものかを判定する(リトライ継続可否の判定に使う)。
+    /// osascriptはstderrに英語のAEエラーメッセージ+数値コードを返す
+    /// (例: "Spotify got an error: Application isn't running. (-600)" /
+    ///  "Connection is invalid (-609)")。メッセージ文字列はロケールに
+    /// 依らず英語なので文字列マッチで判定し、数値コード(-600=procNotFound
+    /// 「アプリ未起動/起動途中」、-609=connectionInvalid「AE接続無効」)も
+    /// 併せて見る。これら以外(-1743のTCC拒否、スクリプト構文エラー等)は
+    /// 恒久エラーとして偽を返し、呼び出し側で即throwさせる。
+    private static func isSpotifyTransientAEError(_ message: String) -> Bool {
+        message.contains("isn't running")
+            || message.contains("Connection is invalid")
+            || message.contains("connection is invalid")
+            || message.contains("-600")
+            || message.contains("-609")
+    }
+
+    /// 保険: osascript成功後にSpotifyがフォアグラウンドへ出てきた場合、
+    /// バックグラウンドタスクで約6秒間 frontmostApplication を監視し、
+    /// frontmostがSpotifyになるたび NSApp.activate() でSleevesへ
+    /// アクティブを取り戻す(メインスレッドで呼ぶ)。
+    /// 1回取り戻しても監視は継続する(冷起動→後から窓を出す等、
+    /// 2段階でactivateされうるため)。
+    /// --catalog-test CLI経路ではスキップする(CLIでNSAppをactivateさせない)
+    private static func startSpotifyFrontmostWatchdog() {
+        guard !ProcessInfo.processInfo.arguments.contains("--catalog-test") else {
+            logger.notice("spotify watchdog: skipped (--catalog-test CLI mode)")
+            return
+        }
+        Task.detached {
+            logger.notice("spotify watchdog: start; watching frontmost for \(Self.spotifyFrontmostWatchDuration, privacy: .public)s")
+            let deadline = Date().addingTimeInterval(Self.spotifyFrontmostWatchDuration)
+            var reactivations = 0
+            while Date() < deadline {
+                if NSWorkspace.shared.frontmostApplication?.bundleIdentifier == Self.spotifyBundleID {
+                    reactivations += 1
+                    logger.notice("spotify watchdog: Spotify is frontmost; reactivating Sleeves (#\(reactivations, privacy: .public))")
+                    await MainActor.run { NSApp.activate() }
+                    // activate反映の猶予を置き、直後の同一tickで再検出して
+                    // activateを連打しないようにする
+                    try? await Task.sleep(nanoseconds: 100_000_000)
+                }
+                try? await Task.sleep(nanoseconds: 50_000_000)
+            }
+            logger.notice("spotify watchdog: expired; frontmost reactivations=\(reactivations, privacy: .public)")
+        }
     }
 
     /// 子プロセスが応答しなくなった場合の打ち切り時間(秒)
