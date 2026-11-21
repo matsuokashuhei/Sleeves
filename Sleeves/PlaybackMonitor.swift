@@ -23,8 +23,12 @@ final class PlaybackMonitor: ObservableObject {
     @Published private(set) var musicAppPlaying = false
     /// 本アプリ内プレイヤー(ApplicationMusicPlayer)の再生状態
     @Published private(set) var inAppPlaying = false
+    /// Spotify.app側の再生状態
+    @Published private(set) var spotifyPlaying = false
     /// Musicアプリで再生中のアルバム名
     @Published private(set) var currentAlbumTitle: String?
+    /// Spotify.appで再生中のアルバム名(`album of current track`)
+    @Published private(set) var currentSpotifyAlbumTitle: String?
     /// 自分が最後に鳴らしたエントリのID(プレイリスト表示用)
     @Published private(set) var activeEntryID: String?
     /// 再生を要求したが、実際の再生開始がまだ観測できていないエントリのID。
@@ -70,7 +74,7 @@ final class PlaybackMonitor: ObservableObject {
         ]
     }
 
-    var isPlaying: Bool { musicAppPlaying || inAppPlaying }
+    var isPlaying: Bool { musicAppPlaying || inAppPlaying || spotifyPlaying }
 
     /// このエントリが「再生中」かどうか。
     /// 再生要求から実際の再生開始を観測できるまで数秒かかるため、
@@ -82,11 +86,25 @@ final class PlaybackMonitor: ObservableObject {
 
     /// 実際の再生状態として観測されているか(pendingの要求は含めない)
     private func isPlayingNow(_ entry: MediaEntry) -> Bool {
-        switch entry.kind {
-        case .album:
-            return musicAppPlaying && currentAlbumTitle == entry.title
-        case .playlist:
-            return inAppPlaying && activeEntryID == entry.id
+        switch entry.provider {
+        case .appleMusic:
+            switch entry.kind {
+            case .album:
+                return musicAppPlaying && currentAlbumTitle == entry.title
+            case .playlist:
+                return inAppPlaying && activeEntryID == entry.id
+            }
+        case .spotify:
+            switch entry.kind {
+            case .album:
+                // AppleScriptからは再生中トラックのアルバム名が取れるので
+                // Musicアプリと同じくタイトル一致で判定する
+                return spotifyPlaying && currentSpotifyAlbumTitle == entry.title
+            case .playlist:
+                // AppleScriptから再生コンテキスト(プレイリストURI)は
+                // 取れないため、in-app playlistと同じactiveEntryID方式
+                return spotifyPlaying && activeEntryID == entry.id
+            }
         }
     }
 
@@ -144,6 +162,20 @@ final class PlaybackMonitor: ObservableObject {
 
         let newInAppPlaying = ApplicationMusicPlayer.shared.state.playbackStatus == .playing
         if inAppPlaying != newInAppPlaying { inAppPlaying = newInAppPlaying }
+
+        // Spotifyは「開いているシェルフのいずれかにspotifyエントリが
+        // 1つでも登録されている」場合だけポーリングする(Spotify不使用の
+        // ユーザーに毎2秒osascriptをspawnさせないためのゲート)。
+        // ゲート不成立の間はspotifyPlaying=falseを維持する
+        if ShelfManager.shared.anyOpenShelfHasSpotify {
+            let sinfo = await PlaybackEngine.spotifyNowPlayingInfo()
+            let newSpotifyPlaying = sinfo?.isPlaying ?? false
+            if spotifyPlaying != newSpotifyPlaying { spotifyPlaying = newSpotifyPlaying }
+            if currentSpotifyAlbumTitle != sinfo?.album { currentSpotifyAlbumTitle = sinfo?.album }
+        } else {
+            if spotifyPlaying { spotifyPlaying = false }
+            if currentSpotifyAlbumTitle != nil { currentSpotifyAlbumTitle = nil }
+        }
 
         if !isPlaying, activeEntryID != nil, activeEntryID != pendingEntryID {
             activeEntryID = nil
@@ -208,8 +240,12 @@ final class PlaybackMonitor: ObservableObject {
                 throw error
             }
             activeEntryID = entry.id
-            if entry.kind == .album {
+            // アルバムはポーリングが追いつくまで再生中タイトルを
+            // 先に入れておく(pending→再生中の見た目の繋ぎ)
+            if entry.provider == .appleMusic, entry.kind == .album {
                 currentAlbumTitle = entry.title
+            } else if entry.provider == .spotify, entry.kind == .album {
+                currentSpotifyAlbumTitle = entry.title
             }
         }
         await refresh()

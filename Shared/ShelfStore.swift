@@ -157,8 +157,10 @@ final class ShelfStore: ObservableObject {
 
     // MARK: - 編集 (メインスレッドで呼ぶこと)
 
-    func contains(_ id: String) -> Bool {
-        entries.contains { $0.id == id }
+    /// 重複判定。IDはproviderごとの名前空間(SpotifyのIDとApple Musicの
+    /// IDは実質衝突しないが、安い保険としてproviderも比較する)
+    func contains(_ id: String, provider: MediaEntry.Provider) -> Bool {
+        entries.contains { $0.id == id && $0.provider == provider }
     }
 
     /// 追加パイプラインの結果。シェルフへのドラッグ&ドロップが
@@ -174,7 +176,7 @@ final class ShelfStore: ObservableObject {
     /// atSlotを渡すと先頭の空きではなくそのスロットへ挿入する(ドロップ位置への
     /// 直接挿入。append→moveだと末尾に一瞬出てから滑るのが見えるため)
     func addFromCatalog(_ parsed: MediaURLParser.Parsed, atSlot s: Int? = nil) async throws -> AddOutcome {
-        guard !contains(parsed.id) else {
+        guard !contains(parsed.id, provider: parsed.provider) else {
             Self.logger.notice("addFromCatalog: duplicate id=\(parsed.id, privacy: .public)")
             return .duplicate
         }
@@ -205,7 +207,7 @@ final class ShelfStore: ObservableObject {
     /// 押し出されるのは既存エントリであり slotIndex >= capacity の
     /// 「登録保持・非表示」ルールで扱える)
     func registerFetched(_ entry: MediaEntry, atSlot s: Int? = nil) -> AddOutcome {
-        guard !contains(entry.id) else {
+        guard !contains(entry.id, provider: entry.provider) else {
             Self.logger.notice("registerFetched: duplicate id=\(entry.id, privacy: .public)")
             return .duplicate
         }

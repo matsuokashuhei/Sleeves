@@ -46,24 +46,34 @@ enum PlaybackEngine {
 
     /// 種類に応じて再生する
     static func play(_ entry: MediaEntry) async throws {
-        logger.notice("play() start kind=\(entry.kind.rawValue, privacy: .public) url=\(entry.url, privacy: .public)")
-        switch entry.kind {
-        case .album:
-            try await playAlbum(entry)
-        case .playlist:
-            try await PlaylistPlayer.play(entry)
+        logger.notice("play() start provider=\(entry.provider.rawValue, privacy: .public) kind=\(entry.kind.rawValue, privacy: .public) url=\(entry.url, privacy: .public)")
+        switch entry.provider {
+        case .appleMusic:
+            switch entry.kind {
+            case .album:
+                try await playAlbum(entry)
+            case .playlist:
+                try await PlaylistPlayer.play(entry)
+            }
+        case .spotify:
+            try await playSpotify(entry)
         }
         logger.notice("play() requested OK")
     }
 
     /// 停止
     static func stop(_ entry: MediaEntry) async throws {
-        logger.notice("stop() kind=\(entry.kind.rawValue, privacy: .public)")
-        switch entry.kind {
-        case .album:
-            try await runTool("/usr/bin/osascript", ["-e", Self.stopMusicScript])
-        case .playlist:
-            PlaylistPlayer.stop()
+        logger.notice("stop() provider=\(entry.provider.rawValue, privacy: .public) kind=\(entry.kind.rawValue, privacy: .public)")
+        switch entry.provider {
+        case .appleMusic:
+            switch entry.kind {
+            case .album:
+                try await runTool("/usr/bin/osascript", ["-e", Self.stopMusicScript])
+            case .playlist:
+                PlaylistPlayer.stop()
+            }
+        case .spotify:
+            try await runTool("/usr/bin/osascript", ["-e", Self.stopSpotifyScript])
         }
     }
 
@@ -79,6 +89,21 @@ enum PlaybackEngine {
     /// Musicアプリの再生を止める(二重再生の防止用)
     static func stopMusicApp() async {
         _ = try? await runTool("/usr/bin/osascript", ["-e", Self.stopMusicScript])
+    }
+
+    /// `is running` ガード付きの停止スクリプト(stopMusicScriptと同じパターン。
+    /// 未起動のSpotify.appを起動させない)
+    private static let stopSpotifyScript = """
+    if application "Spotify" is running then
+        tell application "Spotify" to pause
+    end if
+    """
+
+    /// Spotifyの再生を止める(二重再生の防止用)。
+    /// Apple Music側の再生開始時に呼ぶ。未インストール・未起動でも安全
+    /// (is runningガードで未起動は触らず、osascript失敗は握り潰す)
+    static func stopSpotifyApp() async {
+        _ = try? await runTool("/usr/bin/osascript", ["-e", Self.stopSpotifyScript])
     }
 
     /// Musicアプリの現在の再生状態 (isPlaying, 現在のアルバム名)。
@@ -107,12 +132,41 @@ enum PlaybackEngine {
         return (parts[0] == "playing", parts[1].isEmpty ? nil : parts[1])
     }
 
+    /// Spotifyの現在の再生状態 (isPlaying, 現在のアルバム名)。
+    /// nowPlayingInfo()と同じくis runningガード付き —
+    /// Spotify.appが起動していなければ起動せず (false, nil) を返し、
+    /// 未インストールならosascript自体が失敗してnilを返す
+    static func spotifyNowPlayingInfo() async -> (isPlaying: Bool, album: String?)? {
+        let script = """
+        if application "Spotify" is running then
+            tell application "Spotify"
+                set s to player state as text
+                set a to ""
+                try
+                    set a to album of current track
+                end try
+                return s & "|" & a
+            end tell
+        else
+            return "stopped|"
+        end if
+        """
+        guard let out = try? await runTool("/usr/bin/osascript", ["-e", script], captureOutput: true) else {
+            return nil
+        }
+        let parts = out.trimmingCharacters(in: .whitespacesAndNewlines).components(separatedBy: "|")
+        guard parts.count >= 2 else { return nil }
+        return (parts[0] == "playing", parts[1].isEmpty ? nil : parts[1])
+    }
+
     // MARK: - アルバム(Musicアプリ + ショートカット)
 
     private static func playAlbum(_ entry: MediaEntry) async throws {
-        // 本アプリ内プレイヤーが再生中なら先に止める(二重再生の防止。
-        // PlaylistPlayer.play がMusicアプリを止めるのと対称)
+        // 本アプリ内プレイヤーとSpotifyが再生中なら先に止める
+        // (二重再生の防止。PlaylistPlayer.playがMusicアプリと
+        // Spotifyを止めるのと対称)
         PlaylistPlayer.stop()
+        await stopSpotifyApp()
 
         // ショートカット名の解決には `shortcuts list` を使う
         // (一覧の取得はアプリプロセスからでも動作することを確認済み)
@@ -160,6 +214,22 @@ enum PlaybackEngine {
 
     private static func percentEncoded(_ text: String) -> String {
         text.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? text
+    }
+
+    // MARK: - Spotify(Spotify.appをAppleScriptで制御)
+
+    /// Spotify.appで `spotify:<kind>:<id>` のURIを再生する。
+    /// アルバムもプレイリストも `play track` で再生できる(実機検証済み)。
+    /// `tell application "Spotify"` は未起動なら起動する(再生には
+    /// 起動が必要なのでここではis runningガードを付けない)。
+    /// 未インストール・コマンド失敗はosascriptの非0終了→PlaybackError.failed
+    private static func playSpotify(_ entry: MediaEntry) async throws {
+        // 本アプリ内プレイヤーとMusicアプリが再生中なら先に止める
+        // (二重再生の防止。playAlbum/PlaylistPlayer.playと対称)
+        PlaylistPlayer.stop()
+        await stopMusicApp()
+        let script = "tell application \"Spotify\" to play track \"spotify:\(entry.kind.rawValue):\(entry.id)\""
+        try await runTool("/usr/bin/osascript", ["-e", script])
     }
 
     /// 子プロセスが応答しなくなった場合の打ち切り時間(秒)
