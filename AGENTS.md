@@ -571,7 +571,7 @@ jacketShape(cellIndex:)。実物のLPジャケットは角ごとにわずかに�
   部材前面は配置領域(外枠=各辺padding、縦仕切り=columnSpacing、
   横棚板=rowSpacing)にクランプし、残りは開口へ組み込む
   (開口同士の距離=部材の太さ)。パラメータ: wood/frameThickness/
-  dividerThickness/shelfThickness/reveal。**外枠は
+  dividerThickness/shelfThickness。**外枠は
   shelfPaddingInset、縦仕切り・横棚板はshelfSpacingInsetで
   専用の余白/ピッチを加算要求する**(上のinset項参照)ので、
   各ThicknessはSpacing系スライダーと独立に設定値どおり描ける

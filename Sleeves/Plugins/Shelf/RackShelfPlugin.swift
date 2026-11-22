@@ -154,8 +154,6 @@ struct RackShelfPlugin: ShelfPlugin {
         /// なり、残りは上下の開口へ設定rowSpacing/2ずつ組み込まれる
         /// (minクランプは安全側の残置)
         static let shelfThickness = "rack-shelf-thickness"
-        /// 内壁幅(pt)。ジャケットが開口へ納まる奥行きの見え方
-        static let reveal = "rack-reveal"
     }
 
     /// デフォルト値
@@ -165,7 +163,9 @@ struct RackShelfPlugin: ShelfPlugin {
     static let defaultFrameThickness: Double = 16
     static let defaultDividerThickness: Double = 8
     static let defaultShelfThickness: Double = 8
-    static let defaultReveal: Double = 5
+    /// 内壁幅(pt)。かつてRevealスライダーだったが設定は廃止し、
+    /// 内壁リングと開口AOの描画に使う定数として残す
+    private static let innerWallWidth: CGFloat = 5
 
     /// 内壁の方向別シェーディング(外側=手前面→内側=奥の黒opacity)。
     /// 天井面は最も暗く、側壁は中間、床面は手前がわずかに明るい
@@ -250,13 +250,6 @@ struct RackShelfPlugin: ShelfPlugin {
                 range: 0...64,
                 step: 1,
                 defaultValue: Self.defaultShelfThickness
-            )),
-            .slider(.init(
-                id: Param.reveal,
-                label: "Reveal",
-                range: 0...12,
-                step: 1,
-                defaultValue: Self.defaultReveal
             )),
         ]
     }
@@ -998,11 +991,10 @@ struct RackShelfPlugin: ShelfPlugin {
         return WoodMaterial(rawValue: raw) ?? Self.defaultWood
     }
 
-    /// 内壁の実効幅。設定値を開口に収まる範囲へクランプする
+    /// 内壁の実効幅(固定値)。開口に収まる範囲へクランプする
     /// (cellSize/6まで。それ以上だと開口が潰れて見える)
     private func resolvedReveal(context: ShelfStructureContext) -> CGFloat {
-        let raw = context.number(Param.reveal, default: Self.defaultReveal)
-        return max(0, min(CGFloat(raw), context.cellSize / 6))
+        max(0, min(Self.innerWallWidth, context.cellSize / 6))
     }
 
     /// 部材の実効寸法一式。前面幅は配置領域(間隔/padding)へ
