@@ -6,6 +6,7 @@
 //
 
 import AppKit
+import QuartzCore
 import os
 
 /// Dockアイコンの差し替え管理。
@@ -90,9 +91,106 @@ enum AppIconManager {
             logger.error("app icon apply FAILED: image not found asset=\(preset.assetName, privacy: .public)")
             return false
         }
-        NSApp.applicationIconImage = image
+        // 素材は全面ベタ塗りの正方形PNG(Settingsサムネイルと共用のため
+        // 素材自体は触らない)。バンドルアイコンと同じ見え方になるよう、
+        // 1024キャンバス中央の824x824タイルへsquircleクリップで合成する
+        guard let composited = compositeDockIcon(image) else {
+            // 合成失敗時も現行アイコンを維持する(代入しない)
+            logger.error("app icon apply FAILED: compositing failed preset=\(preset.rawValue, privacy: .public)")
+            return false
+        }
+        NSApp.applicationIconImage = composited
         logger.notice("app icon apply OK: \(preset.rawValue, privacy: .public)")
         return true
+    }
+
+    // MARK: - squircle合成
+
+    /// 出力キャンバスの1辺(macOSアイコンの標準)
+    private static let iconCanvasSize: CGFloat = 1024
+    /// ジャケットを描く中央タイルの1辺(バンドルアイコンと同じ占有率)
+    private static let iconTileSize: CGFloat = 824
+    /// squircleの角半径(タイル1辺の約22.4%。設定画面のサムネイルと同じ比率)
+    private static let iconCornerRadius: CGFloat = 185
+
+    /// 全面正方形のジャケット画像を、1024x1024キャンバス中央の
+    /// 824x824タイルへmacOS連続角丸(squircle)でクリップして描き、
+    /// 外側を透明にしたNSImageを返す。失敗時はnil
+    /// (呼び出し側が現行アイコンを維持する)
+    private static func compositeDockIcon(_ source: NSImage) -> NSImage? {
+        guard let sourceCG = source.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+            logger.error("app icon composite FAILED: CGImage取得不可")
+            return nil
+        }
+        let canvas = Int(iconCanvasSize)
+        let margin = (iconCanvasSize - iconTileSize) / 2
+        let tileRect = CGRect(x: margin, y: margin, width: iconTileSize, height: iconTileSize)
+
+        // 1) squircleマスク生成: cornerCurve=.continuous のCALayerを
+        //    グレースケール(アルファ無し)コンテキストに白で描き、
+        //    輝度マスクとして使う。角が円弧ではなく連続曲率になるのが要点
+        guard let maskCtx = CGContext(
+            data: nil,
+            width: canvas,
+            height: canvas,
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceGray(),
+            bitmapInfo: CGImageAlphaInfo.none.rawValue
+        ) else {
+            logger.error("app icon composite FAILED: maskコンテキスト作成不可")
+            return nil
+        }
+        let container = CALayer()
+        container.bounds = CGRect(
+            x: 0, y: 0, width: iconCanvasSize, height: iconCanvasSize)
+        let squircle = CALayer()
+        squircle.frame = tileRect
+        squircle.cornerRadius = iconCornerRadius
+        squircle.cornerCurve = .continuous
+        // マスクは輝度で評価される(白=表示、黒=非表示)ので白で塗る
+        squircle.backgroundColor = CGColor(gray: 1.0, alpha: 1.0)
+        container.addSublayer(squircle)
+        // render(in:)はレイヤ座標(左上原点)をそのまま描くのでCGContext上は
+        // 上下反転するが、squircleは天地対称かつ中央配置なので結果は同じ
+        container.render(in: maskCtx)
+        guard let mask = maskCtx.makeImage() else {
+            logger.error("app icon composite FAILED: mask画像生成不可")
+            return nil
+        }
+
+        // 2) RGBA出力コンテキストへマスククリップしてジャケットを描く
+        guard let outCtx = CGContext(
+            data: nil,
+            width: canvas,
+            height: canvas,
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else {
+            logger.error("app icon composite FAILED: 出力コンテキスト作成不可")
+            return nil
+        }
+        // マスクはキャンバスと同じ1024x1024でsquircleがタイル位置に
+        // 描かれている。clip(to:mask:)はrectいっぱいにマスクを引き伸ばす
+        // ため、ここにtileRectを渡すとsquircleが縮んでしまう。必ず
+        // キャンバス全体のrectを渡すこと
+        outCtx.clip(to: CGRect(x: 0, y: 0, width: iconCanvasSize, height: iconCanvasSize), mask: mask)
+        // CGImage→CGContext→CGImageの往復では向きは保たれる
+        // (UIKitの反転コンテキストに混ぜるときだけ上下が裏返る。
+        //   実測で確認済み: CTMを反転するとジャケットが逆さまになる)
+        // 素材は360pxと小さいので824pxへの拡大は.high補間にする
+        outCtx.interpolationQuality = .high
+        outCtx.draw(sourceCG, in: tileRect)
+        guard let outCG = outCtx.makeImage() else {
+            logger.error("app icon composite FAILED: 出力画像生成不可")
+            return nil
+        }
+        logger.notice("app icon composite OK: squircle tile=\(Int(iconTileSize), privacy: .public) radius=\(Int(iconCornerRadius), privacy: .public)")
+        return NSImage(
+            cgImage: outCG,
+            size: NSSize(width: iconCanvasSize, height: iconCanvasSize))
     }
 
     /// 選択を適用し、成功したときだけ永続化する(設定画面からの操作経路)。
