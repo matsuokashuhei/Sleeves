@@ -108,6 +108,10 @@ struct ShelfView: View {
     /// 出しているコンテキストメニュー/ダイアログのtarget(クロージャ保持用)。
     /// NSMenuItem.targetは保持されないので、メニューが閉じるまで生かしておく
     @State private var contextMenuTargets: [ClosureActionTarget] = []
+    /// 共有シート(NSSharingServicePicker)のdelegate保持用。
+    /// picker.delegateはweakなので、didChoose(選択/キャンセル)でシートが
+    /// 閉じるまで@Stateの配列で生かしておく(contextMenuTargetsと同じパターン)
+    @State private var sharePickerDelegates: [SharePickerDelegate] = []
     /// ゴーストのポインタ追従用タイマー。leftMouseDraggedはドラッグ
     /// セッションに吸収されてモニタへ届かないため(2026-10-24実測)、
     /// 60fpsでmouseLocationをポーリングして追従させる
@@ -864,13 +868,14 @@ struct ShelfView: View {
 
     /// 右上に浮かぶシェルフ操作ツールバー。Musicアプリのウィンドウ右上と
     /// 同じ「共有+3点リーダー」のカプセル。
-    /// - 共有: 表示のみ(実装は別途)
+    /// - 共有: 現在のシェルフのスナップショットをNSSharingServicePickerで
+    ///   共有する(shareShelf()。画像生成はShelfShareView+ImageRenderer)
     /// - 3点リーダー: New Shelf / Settings… / Delete Shelf…
     /// 信号ボタンと同じく、ウィンドウが非アクティブの間は隠す
     private var shelfToolbar: some View {
         HStack(spacing: 0) {
             Button {
-                Self.logger.notice("share button tapped: shelf=\(self.shelfID, privacy: .public) (not implemented yet)")
+                shareShelf()
             } label: {
                 Image(systemName: "square.and.arrow.up")
                     .font(.system(size: 14, weight: .semibold))
@@ -925,6 +930,95 @@ struct ShelfView: View {
         .opacity(chrome.isVisible ? 1 : 0)
         .allowsHitTesting(chrome.isVisible)
         .animation(.easeInOut(duration: 0.15), value: chrome.isVisible)
+    }
+
+    /// 共有ボタン。現在のシェルフの見た目をShelfShareView+ImageRendererで
+    /// NSImage化し、NSSharingServicePickerをボタン直下に出す。
+    /// アートワークはImageRendererがビュー内の非同期ロード(.task)を
+    /// 待たないため、先に表示中エントリ全件をawaitして
+    /// entry.id→NSImageの辞書でビューへ渡す。
+    /// 共有シートはmacOS 13以降ポップオーバー(share sheet)でありNSMenu
+    /// ではないので、既存のmenuTracking監視
+    /// (NSMenu.didBegin/EndTrackingNotification)では捕捉できない。
+    /// 開いている間にchromeの3秒アイドル隠しが走らないよう、表示から
+    /// didChoose(選択。キャンセルもservice=nilで呼ばれる)まで
+    /// chrome.setHold("share")で保持する
+    private func shareShelf() {
+        Self.logger.notice("share button tapped: shelf=\(self.shelfID, privacy: .public)")
+        Task { @MainActor in
+            guard let window = self.windowBox.window,
+                  let contentView = window.contentView else {
+                Self.logger.error("share aborted: no window/contentView shelf=\(self.shelfID, privacy: .public)")
+                return
+            }
+            // 表示中のエントリだけを対象にする(slotIndex >= capacityの
+            // 非表示エントリはpaddedSlotsに現れない)
+            let slots = self.store.paddedSlots()
+            let visibleEntries = slots.compactMap { $0 }
+            Self.logger.notice("share artwork collection started: entries=\(visibleEntries.count, privacy: .public) shelf=\(self.shelfID, privacy: .public)")
+            var artworks: [String: NSImage] = [:]
+            for entry in visibleEntries {
+                if let image = await ShelfStore.artworkImage(for: entry) {
+                    artworks[entry.id] = image
+                }
+            }
+            Self.logger.notice("share artwork collection done: loaded=\(artworks.count, privacy: .public)/\(visibleEntries.count, privacy: .public) shelf=\(self.shelfID, privacy: .public)")
+            let renderer = ImageRenderer(content: ShelfShareView(
+                settings: self.store.settings,
+                slots: slots,
+                artworks: artworks
+            ))
+            // Retina解像度(2x)で書き出す
+            renderer.scale = 2
+            guard let image = renderer.nsImage else {
+                Self.logger.error("share render failed: nsImage=nil shelf=\(self.shelfID, privacy: .public)")
+                return
+            }
+            Self.logger.notice("share render succeeded: size=\(Int(image.size.width), privacy: .public)x\(Int(image.size.height), privacy: .public)pt scale=2 shelf=\(self.shelfID, privacy: .public)")
+            let picker = NSSharingServicePicker(items: [image, ShelfShareView.appURL])
+            // アンカー=共有ボタンの矩形。isOverChromeと同じくレイアウト定数
+            // からウィンドウ座標(左下原点)で組み立てる。カプセルは共有+
+            // 3点リーダーの2ボタン幅で、共有ボタンはその左半分(幅37pt)
+            var anchor = CGRect(
+                x: window.frame.width - Self.toolbarTrailingInset - Self.toolbarButtonWidth * 2,
+                y: window.frame.height - Self.toolbarTopInset - Self.toolbarHeight,
+                width: Self.toolbarButtonWidth,
+                height: Self.toolbarHeight
+            )
+            // show(relativeTo:of:)のrectはofビューの座標系で渡す。
+            // contentViewがisFlipped(SwiftUIのホスティングビューは
+            // 左上原点)ならYを反転し、非flippedならウィンドウ座標
+            // (左下原点)のまま使う。fullSizeContentView構成では
+            // contentViewがウィンドウ全面なのでbounds高=frame高
+            if contentView.isFlipped {
+                anchor.origin.y = contentView.bounds.height
+                    - anchor.origin.y - anchor.height
+            }
+            // picker.delegateはweakなので、シートが閉じる(didChoose。
+            // 選択=service非nil、キャンセル=nilで必ず呼ばれる)まで
+            // @Stateの配列で保持する。chromeのhold解除と後片付けは
+            // delegate側のこのコールバックに集約する
+            let delegate = SharePickerDelegate { finished, service in
+                self.sharePickerDelegates.removeAll { $0 === finished }
+                self.chrome.setHold("share", active: false)
+                Self.logger.notice("share picker dismissed: shelf=\(self.shelfID, privacy: .public) service=\(service?.title ?? "cancelled", privacy: .public)")
+            }
+            picker.delegate = delegate
+            sharePickerDelegates.append(delegate)
+            // シート表示中はchromeを隠さない(NSMenuではないので
+            // menuTracking監視では捕捉できない — 上のdocコメント参照)
+            chrome.setHold("share", active: true)
+            // preferredEdgeはpositioningViewのisFlippedを尊重する
+            // (NSPopoverの仕様と同じ)。SwiftUIのホスティングビューは
+            // flipped(左上原点)なので「ボタンの下」に出すには
+            // flippedなら.maxY、非flippedなら.minYを指定する
+            picker.show(
+                relativeTo: anchor,
+                of: contentView,
+                preferredEdge: contentView.isFlipped ? .maxY : .minY
+            )
+            Self.logger.notice("share picker shown: shelf=\(self.shelfID, privacy: .public) anchor=\(NSStringFromRect(anchor), privacy: .public) flipped=\(contentView.isFlipped, privacy: .public)")
+        }
     }
 
     /// ウィンドウが画面からはみ出さないためのコンテンツサイズ上限。
@@ -2422,6 +2516,27 @@ private final class ClosureActionTarget: NSObject {
 
     @objc func invoke() {
         action()
+    }
+}
+
+/// NSSharingServicePickerのdelegate。picker.delegateはweak参照なので、
+/// 使う側が生存を保証する(ShelfViewはsharePickerDelegates(@Stateの配列)
+/// で保持)。didChooseは選択時(service非nil)とキャンセル時(nil)の
+/// 両方で呼ばれる=シートが閉じた通知として使える。
+/// コールバックには自分自身も渡す(保持配列からの除去に使う)
+private final class SharePickerDelegate: NSObject, NSSharingServicePickerDelegate {
+    private let onFinish: @MainActor (SharePickerDelegate, NSSharingService?) -> Void
+
+    init(onFinish: @escaping @MainActor (SharePickerDelegate, NSSharingService?) -> Void) {
+        self.onFinish = onFinish
+    }
+
+    func sharingServicePicker(_ sharingServicePicker: NSSharingServicePicker, didChoose service: NSSharingService?) {
+        // AppKitのdelegateコールバックはメインスレッドで呼ばれる。
+        // onFinish内でchrome(@MainActor)に触るのでassumeIsolatedで入る
+        MainActor.assumeIsolated {
+            onFinish(self, service)
+        }
     }
 }
 
