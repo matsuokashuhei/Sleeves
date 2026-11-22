@@ -405,12 +405,17 @@ struct ShelfView: View {
         }
     }
 
-    // グリッドの間隔と余白はstore.settingsのcolumnSpacing/rowSpacing/
-    // edgePadding/topPadding/bottomPaddingから毎回読む。余白は
-    // 独立した設定ではなく間隔からの導出値
+    // グリッドの間隔はShelfPluginRegistry.effectiveSpacingから
+    // 毎回読む(設定値+プラグインのspacing inset要求の合計。
+    // insetがあるとレコードピッチがinset分だけ広がる)、
+    // 余白はShelfPluginRegistry.effectivePaddingから毎回読む。
+    // 余白の導出値は独立した設定ではなく間隔設定値からの導出値
     // (edgePadding=columnSpacing、topPadding=max(4,rowSpacing)、
-    //  bottomPadding=rowSpacing)。間隔は設定画面のスライダーで
-    // 変更可能。ウィンドウサイズはこれらと設定値から厳密に計算する。
+    //  bottomPadding=rowSpacing)で、構造プラグインが
+    //  shelfPaddingInsetで要求する追加分(例: Record Rackの外枠太さ)
+    //  が導出値へ加算される(effectivePadding参照。導出値は
+    //  常に保持される)。間隔設定値は設定画面のスライダーで変更可能。
+    // ウィンドウサイズはこれらと設定値から厳密に計算する。
     // コンテンツはignoresSafeAreaでウィンドウ上端まで広がっている
     // (信号ボタンはMusicアプリ同様にコンテンツの上へ重なる)
     /// 右上ツールバーの余白とサイズ。信号ボタン(左上13pt, 14pt)の中心
@@ -445,11 +450,22 @@ struct ShelfView: View {
         let cell = settings.artworkSize.points
         let columnCount = settings.columns
         let rowCount = settings.rows
-        let columnSpacing = CGFloat(settings.columnSpacing)
-        let rowSpacing = CGFloat(settings.rowSpacing)
-        let edgePadding = CGFloat(settings.edgePadding)
-        let topPadding = CGFloat(settings.topPadding)
-        let bottomPadding = CGFloat(settings.bottomPadding)
+        // レコード間隔は設定値ではなくeffectiveSpacing(設定値+
+        // プラグインのspacing inset要求。内部部材が専有帯を要求
+        // する場合ピッチがinset分だけ広がる)。以降の
+        // GridItem spacing・幅高さ計算・resolveShelf・LazyVGrid
+        // spacingはすべてこの実効値を使う
+        let spacing = ShelfPluginRegistry.effectiveSpacing(settings: settings)
+        let columnSpacing = spacing.column
+        let rowSpacing = spacing.row
+        // 外周余白は導出値ではなくeffectivePadding(導出値+
+        // プラグインのpadding inset要求)。幅高さ計算・
+        // resolveShelf・.padding・ドラッグ帯はすべてこの実効値を
+        // 使う
+        let padding = ShelfPluginRegistry.effectivePadding(settings: settings)
+        let edgePadding = padding.edge
+        let topPadding = padding.top
+        let bottomPadding = padding.bottom
         // entry.idは数値列または"pl.xxx"なので"empty-N"と衝突しない
         let slots = store.paddedSlots().enumerated().map { offset, entry in
             Slot(id: entry?.id ?? "empty-\(offset)", index: offset, entry: entry)
@@ -490,9 +506,9 @@ struct ShelfView: View {
 
         // ウィンドウはwindowResizability(.contentSize)なので、
         // この固定フレームがそのままmin=maxのウィンドウサイズになる
-        // (コンテンツは上端まで広がるので、四辺の余白はsettingsの
-        //  edgePadding/topPadding/bottomPaddingの値。下端はrowSpacing
-        //  からの導出値)。
+        // (コンテンツは上端まで広がるので、四辺の余白は上で読んだ
+        //  effectivePaddingの実効値。導出値はrowSpacing等の間隔から
+        //  導かれ、プラグインのinset要求が加算される)。
         // 設定変更でstore.settingsが変わると自動的に追従する。
         let grid = LazyVGrid(columns: columns, spacing: rowSpacing) {
             ForEach(slots) { slot in
@@ -1284,7 +1300,7 @@ struct ShelfView: View {
 
     /// ExternalDropOverlayViewのローカル座標→グリッド座標。
     /// オーバーレイはpadding込みのフレーム全体を覆うので、左上
-    /// (edgePadding, topPadding)分を引く。グリッドが画面収まりに
+    /// (effectivePaddingのedge, top)分を引く。グリッドが画面収まりに
     /// クランプされてScrollView内にある場合は、見えている矩形の
     /// 原点(スクロール量)を足して補正する(slotScreenCenterと同じ考え方)
     private func overlayGridPoint(_ p: CGPoint) -> CGPoint {
@@ -1292,10 +1308,13 @@ struct ShelfView: View {
         // のスクロールビューを探す(非keyウィンドウへのドラッグでも正しくなる)
         let scrollOffset = Self.findScrollView(in: windowBox.window?.contentView)?
             .documentVisibleRect.origin ?? .zero
-        let settings = store.settings
+        // グリッドの外周余白はeffectivePadding(導出値+プラグインの
+        // padding inset)。shelfGridの.paddingと同じ値を引かないと
+        // 座標系がずれる
+        let padding = ShelfPluginRegistry.effectivePadding(settings: store.settings)
         return CGPoint(
-            x: p.x - CGFloat(settings.edgePadding) + scrollOffset.x,
-            y: p.y - CGFloat(settings.topPadding) + scrollOffset.y
+            x: p.x - padding.edge + scrollOffset.x,
+            y: p.y - padding.top + scrollOffset.y
         )
     }
 
@@ -1305,8 +1324,12 @@ struct ShelfView: View {
     private func slotInsertion(atGridPoint g: CGPoint) -> (index: Int, after: Bool)? {
         let settings = store.settings
         let cell = settings.artworkSize.points
-        let stepX = cell + CGFloat(settings.columnSpacing)
-        let stepY = cell + CGFloat(settings.rowSpacing)
+        // グリッドの実ピッチはeffectiveSpacing(設定値+プラグインの
+        // spacing inset)。shelfGridのGridItem spacingと同じ値で
+        // ないとギャップ判定がずれる
+        let spacing = ShelfPluginRegistry.effectiveSpacing(settings: settings)
+        let stepX = cell + spacing.column
+        let stepY = cell + spacing.row
         guard g.x >= 0, g.y >= 0 else { return nil }
         let column = Int(g.x / stepX)
         let row = Int(g.y / stepY)
@@ -1347,13 +1370,16 @@ struct ShelfView: View {
     /// (ShelfPlacement.nearestEmptySlotへの橋渡し。空き無しならnil)
     private func nearestEmptySlot(atGridPoint g: CGPoint) -> Int? {
         let settings = store.settings
+        // スロット中心の幾何は実ピッチ(effectiveSpacing)で計算する。
+        // shelfGridのGridItem spacingと同じ値でないと最近傍判定がずれる
+        let spacing = ShelfPluginRegistry.effectiveSpacing(settings: settings)
         return ShelfPlacement.nearestEmptySlot(
             entries: store.entries,
             capacity: store.capacity,
             columns: settings.columns,
             cell: settings.artworkSize.points,
-            columnSpacing: CGFloat(settings.columnSpacing),
-            rowSpacing: CGFloat(settings.rowSpacing),
+            columnSpacing: spacing.column,
+            rowSpacing: spacing.row,
             at: g
         )
     }
@@ -1668,10 +1694,13 @@ struct ShelfView: View {
         // documentVisibleRect.originが左上基準のスクロール量になる。
         let scrollOffset = Self.findScrollView(in: window.contentView)?
             .documentVisibleRect.origin ?? .zero
-        let settings = store.settings
+        // グリッドの外周余白はeffectivePadding(導出値+プラグインの
+        // padding inset)。shelfGridの.paddingと同じ値を足さないと
+        // ゴーストの着地位置がずれる
+        let padding = ShelfPluginRegistry.effectivePadding(settings: store.settings)
         return window.convertPoint(toScreen: CGPoint(
-            x: rect.midX + CGFloat(settings.edgePadding) - scrollOffset.x,
-            y: window.frame.height - CGFloat(settings.topPadding)
+            x: rect.midX + padding.edge - scrollOffset.x,
+            y: window.frame.height - padding.top
                 - rect.midY + scrollOffset.y
         ))
     }
@@ -1693,9 +1722,13 @@ struct ShelfView: View {
         let cell = settings.artworkSize.points
         let column = index % settings.columns
         let row = index / settings.columns
+        // 実ピッチはeffectiveSpacing(設定値+プラグインのspacing
+        // inset)。shelfGridのGridItem spacingと同じ値でないと
+        // ゴースト着地・ドロップゾーンの座標がずれる
+        let spacing = ShelfPluginRegistry.effectiveSpacing(settings: settings)
         return CGRect(
-            x: CGFloat(column) * (cell + CGFloat(settings.columnSpacing)),
-            y: CGFloat(row) * (cell + CGFloat(settings.rowSpacing)),
+            x: CGFloat(column) * (cell + spacing.column),
+            y: CGFloat(row) * (cell + spacing.row),
             width: cell,
             height: cell
         )

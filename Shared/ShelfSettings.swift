@@ -40,6 +40,9 @@ struct ShelfSettings: Codable, Equatable {
         /// 壁掛けウッドレッジ(スロットごとの小さな木製土台。
         /// LedgeShelfPlugin)
         case ledge
+        /// 箱型キュービックキャビネット(各スロットが木箱の開口に
+        /// なるレコードラック。RackShelfPlugin)
+        case rack
 
         var id: String { rawValue }
 
@@ -48,6 +51,7 @@ struct ShelfSettings: Codable, Equatable {
             switch self {
             case .store: return "Store Shelf"
             case .ledge: return "Wood Ledges"
+            case .rack: return "Record Rack"
             }
         }
     }

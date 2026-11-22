@@ -477,6 +477,35 @@ grid .background/.overlayへ重畳する。(a)〜(c)内での合成順は
   棚板+前柵、LedgeShelfPluginのレッジ)。gridの.overlayに
   レジストリ順で重畳。合成側が.allowsHitTesting(false)を掛ける
 
+合成系フックのほか、棚レベルの外周余白への追加要求フック
+`shelfPaddingInset(values:)` がある(既定0=要求なし)。構造
+プラグインが「この太さの部材を、間隔由来の余白とは別に外周へ
+専有の帯として確保したい」と宣言するもので、RackShelfPluginは
+frameThicknessを返す。要求値は**加算**: レジストリは有効
+プラグインの要求の最大値を `resolvePaddingInset` で解決し、
+`effectivePadding(settings:)` が各辺で 導出値+inset を返す
+(=グリッドがinset分だけ広がるだけでレコード位置は不変。
+導出値は常に保持されるので、導出値を配置領域に使う部材の
+残り=開口の奥行き感は部材の太さに依らず、Frame Thicknessと
+Spacing系スライダーが独立する)。**余白を読む側(グリッド計算・
+resolveShelf・画面座標変換)は必ずeffectivePaddingを使うこと** —
+生の導出値を使うとプラグインの部材とレコード位置がずれる。
+
+同じ加算原理がレコード間隔にもある: `shelfSpacingInset(values:)`
+(既定(column:0,row:0)=要求なし)は「内部部材(棚板・縦仕切り)
+のために設定間隔の上へ追加のピッチを確保したい」という宣言で、
+RackShelfPluginは(dividerThickness, shelfThickness)を返す。
+レジストリは成分ごとの最大値を `resolveSpacingInset` で解決し、
+`effectiveSpacing(settings:)` が (設定値+inset) を返す。
+これで内部部材の前面は実効間隔にクランプされても設定太さ
+そのものになり、部材両脇の残り(recess)は設定間隔の半分で
+一定になる(=Shelf/Divider ThicknessをSpacing系スライダーから
+切り離す機構。ピッチはinset分だけ広がりウィンドウも大きくなる
+が、レコード同士の見た目の隙間=残りは設定値のまま)。
+**レコードピッチを読む側(グリッド計算・resolveShelf・
+スロット矩形・最近傍空きスロット等)は必ずeffectiveSpacingを
+使うこと** — 生の設定値を使うと内部部材とレコード位置がずれる。
+
 CAC-9の教訓: 旧設計では変形がtransformJacketにあり「全transform畳み込み→
 全オーバーレイ」の順だったため、rotation3DEffect(描画だけ変形し
 レイアウト境界は不変)の外側にオーバーレイが残り平面にずれて見えた。
@@ -502,7 +531,8 @@ jacketShape(cellIndex:)。実物のLPジャケットは角ごとにわずかに�
 
 シェルフの「支え構造」は排他選択。`ShelfSettings.ShelfStyle`
 (settings.jsonの `"shelfStyle"`。"store"=通し棚板+アクリル前柵、
-"ledge"=スロットごとの木製レッジ。キー無し/未知値は .store)で保持し、
+"ledge"=スロットごとの木製レッジ、"rack"=箱型キュービーの
+レコードラック。キー無し/未知値は .store)で保持し、
 設定画面ShelfペインのStyleピッカーで切り替える。
 
 - 構造プラグインは `var shelfStyle` で自身のスタイルを宣言する
@@ -534,6 +564,17 @@ jacketShape(cellIndex:)。実物のLPジャケットは角ごとにわずかに�
   (選択肢+assetName+フォールバックgradient)と`WoodTexture`
   (Canvas先頭で1回resolve→paint)を両プラグインが使う。
   boardパラメータも同じ5択で、seedは行番号
+- RackShelfPlugin(id="rack-shelf"): 各スロットが木箱の開口になる
+  箱型キュービックキャビネット(背板はshelfBackdrop、開口の内壁・
+  縦仕切り・横棚板・外枠+台輪はshelfOverlayのCanvas)。開口
+  (aperture)はセルrectを各辺の残り分だけ外側へ広げた矩形で、
+  部材前面は配置領域(外枠=各辺padding、縦仕切り=columnSpacing、
+  横棚板=rowSpacing)にクランプし、残りは開口へ組み込む
+  (開口同士の距離=部材の太さ)。パラメータ: wood/frameThickness/
+  dividerThickness/shelfThickness/reveal。**外枠は
+  shelfPaddingInset、縦仕切り・横棚板はshelfSpacingInsetで
+  専用の余白/ピッチを加算要求する**(上のinset項参照)ので、
+  各ThicknessはSpacing系スライダーと独立に設定値どおり描ける
 - **新しいスタイルの追加手順**: ShelfStyleにcaseを足し、
   `shelfStyle`を返す構造プラグインを作ってレジストリへ登録するだけで
   ピッカー・フィルタ・resolveまで全部通る
