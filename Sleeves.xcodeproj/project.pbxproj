@@ -20,6 +20,7 @@
 		3C43A0BF4FAF72CE93E493E5 /* UpdateController.swift in Sources */ = {isa = PBXBuildFile; fileRef = C04AE0D943DA085F914429B0 /* UpdateController.swift */; };
 		4AE494D244CC9639A447F3BC /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 4C79D0C8B123222CEDDB7821 /* Localizable.xcstrings */; };
 		4FD9D33F8E582761FB828463 /* WallPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3CD7827CF7BEC4D0337E54F /* WallPlugin.swift */; };
+		55799422F6251340D73AC78B /* RackShelfPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86407140750ACB1C2D7B77D9 /* RackShelfPlugin.swift */; };
 		572915460A46C9CA9DEBA8B3 /* SunFadePlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D61716AFDCBE9D7F67BCA23 /* SunFadePlugin.swift */; };
 		5A420E873AEBABBA2682661E /* RingWearPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16A4E3D03C23A31A2E74EC67 /* RingWearPlugin.swift */; };
 		5B3D55D8B71DBB710C7BD311 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 6989FE0B101E8FF04306BD42 /* Sparkle */; };
@@ -70,6 +71,7 @@
 		746AFC0300C12CB0FE1CF9E9 /* WindowGlass.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowGlass.swift; sourceTree = "<group>"; };
 		74E8B7D55244864A35A382B1 /* PlaylistPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaylistPlayer.swift; sourceTree = "<group>"; };
 		7D61716AFDCBE9D7F67BCA23 /* SunFadePlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SunFadePlugin.swift; sourceTree = "<group>"; };
+		86407140750ACB1C2D7B77D9 /* RackShelfPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RackShelfPlugin.swift; sourceTree = "<group>"; };
 		89450E30E25685549753D22E /* ShelfView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShelfView.swift; sourceTree = "<group>"; };
 		89F883757235264E2B9B39AB /* YellowingPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YellowingPlugin.swift; sourceTree = "<group>"; };
 		8A325F4CB2533AF599532FA7 /* SpotifyCatalogClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpotifyCatalogClient.swift; sourceTree = "<group>"; };
@@ -107,6 +109,7 @@
 			children = (
 				BD0929845E7A34DFB12279D8 /* AmbientLightPlugin.swift */,
 				086B44049079FAEA087AF0B9 /* LedgeShelfPlugin.swift */,
+				86407140750ACB1C2D7B77D9 /* RackShelfPlugin.swift */,
 				FC4471CBB5F71E05376E8143 /* StoreShelfPlugin.swift */,
 				C3CD7827CF7BEC4D0337E54F /* WallPlugin.swift */,
 				41FF7290D02AD8F11BF6048F /* WoodMaterial.swift */,
@@ -258,7 +261,7 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
-				LastUpgradeCheck = 1430;
+				LastUpgradeCheck = 1600;
 				TargetAttributes = {
 					AAA5416612D87E42DA59783E = {
 						DevelopmentTeam = CY4LJR5KMM;
@@ -338,6 +341,7 @@
 				2E8C389857C1556F4D6D052F /* PlaybackEngine.swift in Sources */,
 				89F6C7894E6035DF9E8087B6 /* PlaybackMonitor.swift in Sources */,
 				853570E2DF2C1B7598C44B79 /* PlaylistPlayer.swift in Sources */,
+				55799422F6251340D73AC78B /* RackShelfPlugin.swift in Sources */,
 				5A420E873AEBABBA2682661E /* RingWearPlugin.swift in Sources */,
 				2C8A74353F64306FDF11B7C7 /* ScuffsPlugin.swift in Sources */,
 				310FFDE0F22927F2D9523CB3 /* SettingsView.swift in Sources */,

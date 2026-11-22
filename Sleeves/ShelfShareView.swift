@@ -46,17 +46,26 @@ struct ShelfShareView: View {
     let artworks: [String: NSImage]
 
     var body: some View {
-        // グリッドの間隔・余白はshelfGridと同じくsettingsの導出値から
-        // 計算する。違いはScrollViewクランプをしないことだけ —
+        // グリッドの間隔・余白はshelfGridと同じくsettingsから計算する
+        // (間隔はeffectiveSpacing=設定値+プラグインのspacing inset、
+        //  余白はeffectivePadding=導出値+プラグインのpadding inset)。
+        // 違いはScrollViewクランプをしないことだけ —
         // 画像は自然サイズ(全スロット収まる大きさ)で作る
         let cell = settings.artworkSize.points
         let columnCount = settings.columns
         let rowCount = settings.rows
-        let columnSpacing = CGFloat(settings.columnSpacing)
-        let rowSpacing = CGFloat(settings.rowSpacing)
-        let edgePadding = CGFloat(settings.edgePadding)
-        let topPadding = CGFloat(settings.topPadding)
-        let bottomPadding = CGFloat(settings.bottomPadding)
+        // 間隔はshelfGridと同じeffectiveSpacingを使う。生の設定値だと
+        // spacing insetを要求した構造プラグインの部材とレコード位置が
+        // スナップショット上でずれる
+        let spacing = ShelfPluginRegistry.effectiveSpacing(settings: settings)
+        let columnSpacing = spacing.column
+        let rowSpacing = spacing.row
+        // 余白はshelfGridと同じeffectivePaddingを使う。生の導出値だと
+        // 構造プラグインの部材とレコード位置がスナップショット上でずれる
+        let padding = ShelfPluginRegistry.effectivePadding(settings: settings)
+        let edgePadding = padding.edge
+        let topPadding = padding.top
+        let bottomPadding = padding.bottom
         let columns = Array(
             repeating: GridItem(.fixed(cell), spacing: columnSpacing),
             count: columnCount

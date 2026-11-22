@@ -103,7 +103,13 @@ struct ShelfPluginContext {
 /// 棚レベルフック(shelfBackdrop/shelfOverlay)に渡される実行コンテキスト。
 /// グリッドの幾何定数(セルサイズ・行列数・間隔・余白)と解決済み
 /// パラメータ値を持つ。座標はすべて「padding適用済みグリッドの
-/// 左上原点」(=ShelfViewのgridフレーム)で解釈する
+/// 左上原点」(=ShelfViewのgridフレーム)で解釈する。
+/// 余白3辺はShelfPluginRegistry.effectivePaddingの実効値
+/// (導出値+プラグインのshelfPaddingInset要求の合計)、
+/// 間隔2辺はShelfPluginRegistry.effectiveSpacingの実効値
+/// (設定値+プラグインのshelfSpacingInset要求の合計)が渡る前提で
+/// 読むこと(生の設定/導出値だとプラグインの部材とレコード位置が
+/// ずれる)
 struct ShelfStructureContext {
     /// セル(ジャケット)1辺のポイント数
     let cellSize: CGFloat
@@ -111,9 +117,11 @@ struct ShelfStructureContext {
     let gridColumns: Int
     /// グリッドの行数(1以上)
     let gridRows: Int
-    /// セル間の水平間隔
+    /// セル間の水平間隔(effectiveSpacingの実効値=設定値+
+    /// プラグインのshelfSpacingInset要求の合計)
     let columnSpacing: CGFloat
-    /// セル間の垂直間隔(棚板が入る行間帯の高さ)
+    /// セル間の垂直間隔(棚板が入る行間帯の高さ。
+    /// 同じくeffectiveSpacingの実効値)
     let rowSpacing: CGFloat
     /// 左右の余白
     let edgePadding: CGFloat
@@ -230,6 +238,36 @@ protocol ShelfPlugin {
     /// 合成側が .allowsHitTesting(false) を掛けるので、ここで返す
     /// ビューは再生タップ・D&D・右クリック・ドロップゾーンを潰さない
     func shelfOverlay(context: ShelfStructureContext) -> AnyView?
+
+    /// (g) 外周余白への追加要求(inset)。構造プラグインが「この太さの
+    /// 部材を、間隔から導出される余白とは別に、外周へ専有の帯と
+    /// して確保したい」と宣言するフック(既定0=要求なし)。
+    /// valuesはspecのデフォルト値で解決済み。
+    /// この値は導出padding(edgePadding=columnSpacing、
+    /// topPadding=max(4,rowSpacing)、bottomPadding=rowSpacing)へ
+    /// **加算**される: レジストリは有効プラグインの要求の最大値を
+    /// resolvePaddingInsetで解決し、effectivePaddingが各辺で
+    /// 導出値+inset を返す。導出値は常に保持されるので、導出値を
+    /// 配置領域として使う部材(開口の残り=leftover等)の見え方は
+    /// insetの有無で変わらず、部材の太さと間隔系スライダーが
+    /// 独立する(レコードの位置とピッチは変わらない —
+    /// ウィンドウがinset分だけ大きくなるだけ)
+    func shelfPaddingInset(values: [String: PluginParameterValue]) -> CGFloat
+
+    /// (h) レコード間隔への追加要求(spacing inset)。構造プラグインが
+    /// 「内部部材(棚板・縦仕切り等)のために、間隔から導出される残り
+    /// とは別に、レコードピッチへ専有の帯として追加の間隔を
+    /// 確保したい」と宣言するフック(既定(column:0,row:0)=要求なし)。
+    /// valuesはspecのデフォルト値で解決済み。
+    /// 戻り値のcolumn/rowはcolumnSpacing/rowSpacing設定値へ
+    /// **加算**される: レジストリは有効プラグインの要求を成分ごとに
+    /// 最大値でresolveSpacingInsetに解決し、effectiveSpacingが
+    /// (設定値+inset)を返す。間隔由来の残り(部材前面に対する
+    /// recess)は設定値ぶんのまま保持されるので、内部部材の太さと
+    /// Spacing系スライダーが独立する(ピッチはinset分だけ広がり
+    /// ウィンドウもその分だけ大きくなるが、レコード同士の見た目の
+    /// 隙間=残りは設定値のまま)
+    func shelfSpacingInset(values: [String: PluginParameterValue]) -> (column: CGFloat, row: CGFloat)
 }
 
 extension ShelfPlugin {
@@ -243,6 +281,8 @@ extension ShelfPlugin {
     func transformCell(_ cell: AnyView, context: ShelfPluginContext) -> AnyView { cell }
     func shelfBackdrop(context: ShelfStructureContext) -> AnyView? { nil }
     func shelfOverlay(context: ShelfStructureContext) -> AnyView? { nil }
+    func shelfPaddingInset(values: [String: PluginParameterValue]) -> CGFloat { 0 }
+    func shelfSpacingInset(values: [String: PluginParameterValue]) -> (column: CGFloat, row: CGFloat) { (0, 0) }
 }
 
 /// 有効化済みプラグインと解決済みコンテキストのペア
@@ -271,14 +311,15 @@ enum ShelfPluginRegistry {
     /// 登録済みプラグイン一覧。ここに足すだけで設定画面・永続化・
     /// セル合成まで全部通る
     static let all: [any ShelfPlugin] = [
-        // 構造系(壁・棚板・レッジ)は効果系より上に表示するため先頭に置く。
-        // 壁はスタイル非依存、棚板+前柵とレッジはshelfStyleで排他
+        // 構造系(壁・棚板・レッジ・ラック)は効果系より上に表示するため先頭に置く。
+        // 壁はスタイル非依存、棚板+前柵・レッジ・ラックはshelfStyleで排他
         WallPlugin(),
         // 照明レイヤー(暖色被せ・周辺減光)は壁backdropの直上に重ねる
         // ためWallPluginの直後に置く
         AmbientLightPlugin(),
         StoreShelfPlugin(),
         LedgeShelfPlugin(),
+        RackShelfPlugin(),
         LeanDepthPlugin(),
         SleeveGlossPlugin(),
         SunFadePlugin(),
@@ -311,23 +352,14 @@ enum ShelfPluginRegistry {
             y: (Double(row) + 0.5) / Double(rows)
         )
         return all.compactMap { plugin in
-            // 構造プラグインは選択中のスタイルのものだけ動かす
-            // (非選択側は有効フラグに関わらず除外)
-            if let style = plugin.shelfStyle, style != settings.shelfStyle {
-                return nil
-            }
-            // 未保存のプラグインはdefaultEnabledで有効状態を決める
-            // (構造系は既定ON、効果系は既定OFF)。
-            // canDisable=falseのプラグインはenabledフラグを見ず常に有効
-            let state = settings.plugins[plugin.id]
-                ?? PluginState(enabled: plugin.defaultEnabled)
-            guard !plugin.canDisable || state.enabled else { return nil }
+            guard let values = resolvedValuesIfActive(
+                for: plugin, settings: settings) else { return nil }
             return ResolvedShelfPlugin(
                 plugin: plugin,
                 context: ShelfPluginContext(
                     cellSize: cellSize,
                     cellIndex: cellIndex,
-                    values: state.resolvedValues(specs: plugin.parameterSpecs),
+                    values: values,
                     cellCenter: cellCenter,
                     gridColumns: columns,
                     gridRows: rows
@@ -340,6 +372,9 @@ enum ShelfPluginRegistry {
     /// 解決済みコンテキストつきで返す。未登録/無効は含まない。
     /// グリッド次元はsettingsから1以上に正規化し、間隔・余白は
     /// 呼び出し側(ShelfViewのグリッド定数)からそのまま渡す。
+    /// 間隔2辺にはeffectiveSpacingの実効値、余白3辺には
+    /// effectivePaddingの実効値を渡すこと(生の設定/導出値だと
+    /// プラグインの部材とレコード位置がずれる)。
     /// フックがnilを返すプラグインもここでは除外しない
     /// (合成側がcompactMapでnilを落とす)
     static func resolveShelf(
@@ -353,13 +388,8 @@ enum ShelfPluginRegistry {
     ) -> [ResolvedShelfStructure] {
         checkDuplicateIDs()
         return all.compactMap { plugin in
-            // 構造プラグインは選択中のスタイルのものだけ動かす
-            if let style = plugin.shelfStyle, style != settings.shelfStyle {
-                return nil
-            }
-            let state = settings.plugins[plugin.id]
-                ?? PluginState(enabled: plugin.defaultEnabled)
-            guard !plugin.canDisable || state.enabled else { return nil }
+            guard let values = resolvedValuesIfActive(
+                for: plugin, settings: settings) else { return nil }
             return ResolvedShelfStructure(
                 plugin: plugin,
                 context: ShelfStructureContext(
@@ -371,12 +401,114 @@ enum ShelfPluginRegistry {
                     edgePadding: edgePadding,
                     topPadding: topPadding,
                     bottomPadding: bottomPadding,
-                    values: state.resolvedValues(specs: plugin.parameterSpecs),
+                    values: values,
                     settings: settings
                 )
             )
         }
     }
+
+    /// 有効プラグインが要求する外周余白への追加分(要求値の最大)。
+    /// shelfPaddingInsetフックをアクティブなプラグインへ呼び、
+    /// その最大値を返す。値が変わったときだけnoticeログを出す
+    /// (グリッド計算のたびに呼ばれるので毎回は出さない)
+    static func resolvePaddingInset(settings: ShelfSettings) -> CGFloat {
+        checkDuplicateIDs()
+        let inset = all.reduce(CGFloat(0)) { acc, plugin in
+            guard let values = resolvedValuesIfActive(
+                for: plugin, settings: settings) else { return acc }
+            return max(acc, plugin.shelfPaddingInset(values: values))
+        }
+        if inset != lastPaddingInset {
+            logger.notice("shelf padding inset changed: \(lastPaddingInset, privacy: .public)->\(inset, privacy: .public)")
+            lastPaddingInset = inset
+        }
+        return inset
+    }
+
+    /// 外周余白の実効値 = 各辺で 導出padding + プラグインの
+    /// 余白inset(加算。導出値は常に保持される)。グリッドレイアウト・
+    /// resolveShelfのコンテキスト・画面座標変換はすべてこの値を
+    /// 使うこと。導出値をそのまま使うとプラグインが描く部材と
+    /// レコード位置がずれる
+    static func effectivePadding(
+        settings: ShelfSettings
+    ) -> (edge: CGFloat, top: CGFloat, bottom: CGFloat) {
+        let inset = resolvePaddingInset(settings: settings)
+        return (
+            edge: CGFloat(settings.edgePadding) + inset,
+            top: CGFloat(settings.topPadding) + inset,
+            bottom: CGFloat(settings.bottomPadding) + inset
+        )
+    }
+
+    /// 有効プラグインが要求するレコード間隔への追加分(成分ごとの
+    /// 最大値)。shelfSpacingInsetフックをアクティブなプラグインへ
+    /// 呼び、column/rowそれぞれの最大値を返す。値が変わったときだけ
+    /// noticeログを出す(グリッド計算のたびに呼ばれるので毎回は出さない)
+    static func resolveSpacingInset(
+        settings: ShelfSettings
+    ) -> (column: CGFloat, row: CGFloat) {
+        checkDuplicateIDs()
+        var inset = (column: CGFloat(0), row: CGFloat(0))
+        for plugin in all {
+            guard let values = resolvedValuesIfActive(
+                for: plugin, settings: settings) else { continue }
+            let requested = plugin.shelfSpacingInset(values: values)
+            inset.column = max(inset.column, requested.column)
+            inset.row = max(inset.row, requested.row)
+        }
+        if inset.column != lastSpacingInset.column
+            || inset.row != lastSpacingInset.row {
+            logger.notice("shelf spacing inset changed: col \(lastSpacingInset.column, privacy: .public)->\(inset.column, privacy: .public) row \(lastSpacingInset.row, privacy: .public)->\(inset.row, privacy: .public)")
+            lastSpacingInset = inset
+        }
+        return inset
+    }
+
+    /// レコード間隔の実効値 = 設定値(columnSpacing/rowSpacing) +
+    /// プラグインの間隔inset(成分ごとの加算)。レコードピッチを
+    /// 読む側(グリッド計算・resolveShelfのコンテキスト・
+    /// スロット矩形・最近傍空きスロット等)はすべてこの値を
+    /// 使うこと。生の設定値を使うとプラグインが描く内部部材
+    /// (棚板・縦仕切り)とレコード位置がずれる
+    static func effectiveSpacing(
+        settings: ShelfSettings
+    ) -> (column: CGFloat, row: CGFloat) {
+        let inset = resolveSpacingInset(settings: settings)
+        return (
+            column: CGFloat(settings.columnSpacing) + inset.column,
+            row: CGFloat(settings.rowSpacing) + inset.row
+        )
+    }
+
+    /// プラグインのアクティベーション判定とspec解決済み値の
+    /// 共通部品。resolve/resolveShelf/resolvePaddingInset/
+    /// resolveSpacingInsetの系統で同じ規則を使うためここへ集約する:
+    ///  - 構造プラグインは選択中のshelfStyleのものだけ動かす
+    ///    (非選択側は有効フラグに関わらず除外)
+    ///  - 未保存のプラグインはdefaultEnabledで有効状態を決める
+    ///    (構造系は既定ON、効果系は既定OFF)
+    ///  - canDisable=falseのプラグインはenabledフラグを見ず常に有効
+    /// 無効/非選択スタイルならnil
+    private static func resolvedValuesIfActive(
+        for plugin: any ShelfPlugin,
+        settings: ShelfSettings
+    ) -> [String: PluginParameterValue]? {
+        if let style = plugin.shelfStyle, style != settings.shelfStyle {
+            return nil
+        }
+        let state = settings.plugins[plugin.id]
+            ?? PluginState(enabled: plugin.defaultEnabled)
+        guard !plugin.canDisable || state.enabled else { return nil }
+        return state.resolvedValues(specs: plugin.parameterSpecs)
+    }
+
+    /// resolvePaddingInsetの前回値(変化検出ログ用)
+    private static var lastPaddingInset: CGFloat = 0
+
+    /// resolveSpacingInsetの前回値(変化検出ログ用)
+    private static var lastSpacingInset: (column: CGFloat, row: CGFloat) = (column: 0, row: 0)
 
     /// id衝突の検出(resolveの初回呼び出し時に1回だけ走る)。
     /// 衝突は先勝ちで動作自体はするが意図しないのでerrorを出す
