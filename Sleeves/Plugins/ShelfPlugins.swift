@@ -245,14 +245,24 @@ protocol ShelfPlugin {
     /// valuesはspecのデフォルト値で解決済み。
     /// この値は導出padding(edgePadding=columnSpacing、
     /// topPadding=max(4,rowSpacing)、bottomPadding=rowSpacing)へ
-    /// **加算**される: レジストリは有効プラグインの要求の最大値を
-    /// resolvePaddingInsetで解決し、effectivePaddingが各辺で
-    /// 導出値+inset を返す。導出値は常に保持されるので、導出値を
-    /// 配置領域として使う部材(開口の残り=leftover等)の見え方は
-    /// insetの有無で変わらず、部材の太さと間隔系スライダーが
-    /// 独立する(レコードの位置とピッチは変わらない —
+    /// **加算**される: レジストリは有効プラグインの要求を辺ごとの
+    /// 最大値でresolvePaddingInsetに解決し、effectivePaddingが
+    /// 各辺で 導出値+inset を返す。導出値は常に保持されるので、
+    /// 導出値を配置領域として使う部材(開口の残り=leftover等)の
+    /// 見え方はinsetの有無で変わらず、部材の太さと間隔系
+    /// スライダーが独立する(レコードの位置とピッチは変わらない —
     /// ウィンドウがinset分だけ大きくなるだけ)
     func shelfPaddingInset(values: [String: PluginParameterValue]) -> CGFloat
+
+    /// (g)の辺別版。全辺均一でよければshelfPaddingInsetだけ
+    /// 実装すればよい(デフォルト実装がその値を全辺へ展開する)。
+    /// 特定の辺にだけ追加したい構造プラグインがこちらを
+    /// オーバーライドする(例: Record Rackの奥行きは天板の上に
+    /// 見える上面の帯なのでtop辺へだけdepthを足す)。
+    /// 戻り値の成分解釈はshelfPaddingInsetと同じ(各辺の導出値への加算)
+    func shelfPaddingInsets(
+        values: [String: PluginParameterValue]
+    ) -> (edge: CGFloat, top: CGFloat, bottom: CGFloat)
 
     /// (h) レコード間隔への追加要求(spacing inset)。構造プラグインが
     /// 「内部部材(棚板・縦仕切り等)のために、間隔から導出される残り
@@ -268,6 +278,18 @@ protocol ShelfPlugin {
     /// ウィンドウもその分だけ大きくなるが、レコード同士の見た目の
     /// 隙間=残りは設定値のまま)
     func shelfSpacingInset(values: [String: PluginParameterValue]) -> (column: CGFloat, row: CGFloat)
+
+    /// (i) スロットごとのコンテンツ(レコード)オフセット。
+    /// 構造プラグインが「開口の中でレコードをどこへ置くか」を
+    /// ピッチ位置(セルrect)からの平行移動量で宣言する
+    /// (既定.zero=ピッチ位置そのまま=従来どおり)。
+    /// ShelfView/ShelfShareViewは各スロットの描画・ヒット判定・
+    /// ドロップ先ハイライト・ゴーストの着地位置にこのずれを
+    /// 反映する(グリッドのピッチ・余白・ウィンドウサイズは
+    /// 変わらない。動くのはレコードの見た目の位置だけ)
+    func slotContentOffset(
+        slot: Int, context: ShelfStructureContext
+    ) -> CGSize
 }
 
 extension ShelfPlugin {
@@ -282,7 +304,18 @@ extension ShelfPlugin {
     func shelfBackdrop(context: ShelfStructureContext) -> AnyView? { nil }
     func shelfOverlay(context: ShelfStructureContext) -> AnyView? { nil }
     func shelfPaddingInset(values: [String: PluginParameterValue]) -> CGFloat { 0 }
+    func shelfPaddingInsets(
+        values: [String: PluginParameterValue]
+    ) -> (edge: CGFloat, top: CGFloat, bottom: CGFloat) {
+        // 既定は均一要求を全辺へ展開(辺別要求は必要なプラグインが
+        // オーバーライドする)
+        let uniform = shelfPaddingInset(values: values)
+        return (edge: uniform, top: uniform, bottom: uniform)
+    }
     func shelfSpacingInset(values: [String: PluginParameterValue]) -> (column: CGFloat, row: CGFloat) { (0, 0) }
+    func slotContentOffset(
+        slot: Int, context: ShelfStructureContext
+    ) -> CGSize { .zero }
 }
 
 /// 有効化済みプラグインと解決済みコンテキストのペア
@@ -408,25 +441,74 @@ enum ShelfPluginRegistry {
         }
     }
 
-    /// 有効プラグインが要求する外周余白への追加分(要求値の最大)。
-    /// shelfPaddingInsetフックをアクティブなプラグインへ呼び、
-    /// その最大値を返す。値が変わったときだけnoticeログを出す
-    /// (グリッド計算のたびに呼ばれるので毎回は出さない)
-    static func resolvePaddingInset(settings: ShelfSettings) -> CGFloat {
-        checkDuplicateIDs()
-        let inset = all.reduce(CGFloat(0)) { acc, plugin in
-            guard let values = resolvedValuesIfActive(
-                for: plugin, settings: settings) else { return acc }
-            return max(acc, plugin.shelfPaddingInset(values: values))
+    /// (i) スロットごとのコンテンツオフセットの解決。
+    /// 有効プラグイン全てのslotContentOffsetを**合算**して返す。
+    /// フックは全プラグインへ呼ぶが、実装していないプラグインは
+    /// 既定の.zeroを返すだけなので実質構造プラグインの値
+    /// (構造プラグインはshelfStyleごとに高々1つ有効)。
+    /// レコードの描画位置・ヒット判定・
+    ///  ドロップゾーン・ゴースト着地など「見た目の位置」を読む側は
+    ///  すべてこの値を反映すること
+    static func slotContentOffset(
+        slot: Int, resolved: [ResolvedShelfStructure]
+    ) -> CGSize {
+        resolved.reduce(CGSize.zero) { acc, r in
+            let d = r.plugin.slotContentOffset(
+                slot: slot, context: r.context)
+            return CGSize(
+                width: acc.width + d.width,
+                height: acc.height + d.height)
         }
-        if inset != lastPaddingInset {
-            logger.notice("shelf padding inset changed: \(lastPaddingInset, privacy: .public)->\(inset, privacy: .public)")
+    }
+
+    /// settingsだけから解決する版(グリッド描画外のヒット判定・
+    /// 座標変換など、resolvedShelfを持たない経路用)。
+    /// 間隔・余白はeffective値、セルは設定値から導く
+    static func slotContentOffset(
+        slot: Int, settings: ShelfSettings
+    ) -> CGSize {
+        let spacing = effectiveSpacing(settings: settings)
+        let padding = effectivePadding(settings: settings)
+        return slotContentOffset(
+            slot: slot,
+            resolved: resolveShelf(
+                settings: settings,
+                cellSize: settings.artworkSize.points,
+                columnSpacing: spacing.column,
+                rowSpacing: spacing.row,
+                edgePadding: padding.edge,
+                topPadding: padding.top,
+                bottomPadding: padding.bottom))
+    }
+
+    /// 有効プラグインが要求する外周余白への追加分(成分ごとの
+    /// 最大値)。shelfPaddingInsetsフックをアクティブなプラグインへ
+    /// 呼び、edge/top/bottomそれぞれの最大値を返す。
+    /// 値が変わったときだけnoticeログを出す
+    /// (グリッド計算のたびに呼ばれるので毎回は出さない)
+    static func resolvePaddingInset(
+        settings: ShelfSettings
+    ) -> (edge: CGFloat, top: CGFloat, bottom: CGFloat) {
+        checkDuplicateIDs()
+        var inset = (edge: CGFloat(0), top: CGFloat(0), bottom: CGFloat(0))
+        for plugin in all {
+            guard let values = resolvedValuesIfActive(
+                for: plugin, settings: settings) else { continue }
+            let requested = plugin.shelfPaddingInsets(values: values)
+            inset.edge = max(inset.edge, requested.edge)
+            inset.top = max(inset.top, requested.top)
+            inset.bottom = max(inset.bottom, requested.bottom)
+        }
+        if inset.edge != lastPaddingInset.edge
+            || inset.top != lastPaddingInset.top
+            || inset.bottom != lastPaddingInset.bottom {
+            logger.notice("shelf padding inset changed: edge \(lastPaddingInset.edge, privacy: .public)->\(inset.edge, privacy: .public) top \(lastPaddingInset.top, privacy: .public)->\(inset.top, privacy: .public) bottom \(lastPaddingInset.bottom, privacy: .public)->\(inset.bottom, privacy: .public)")
             lastPaddingInset = inset
         }
         return inset
     }
 
-    /// 外周余白の実効値 = 各辺で 導出padding + プラグインの
+    /// 外周余白の実効値 = 辺ごとに 導出padding + プラグインの
     /// 余白inset(加算。導出値は常に保持される)。グリッドレイアウト・
     /// resolveShelfのコンテキスト・画面座標変換はすべてこの値を
     /// 使うこと。導出値をそのまま使うとプラグインが描く部材と
@@ -436,9 +518,9 @@ enum ShelfPluginRegistry {
     ) -> (edge: CGFloat, top: CGFloat, bottom: CGFloat) {
         let inset = resolvePaddingInset(settings: settings)
         return (
-            edge: CGFloat(settings.edgePadding) + inset,
-            top: CGFloat(settings.topPadding) + inset,
-            bottom: CGFloat(settings.bottomPadding) + inset
+            edge: CGFloat(settings.edgePadding) + inset.edge,
+            top: CGFloat(settings.topPadding) + inset.top,
+            bottom: CGFloat(settings.bottomPadding) + inset.bottom
         )
     }
 
@@ -505,7 +587,8 @@ enum ShelfPluginRegistry {
     }
 
     /// resolvePaddingInsetの前回値(変化検出ログ用)
-    private static var lastPaddingInset: CGFloat = 0
+    private static var lastPaddingInset:
+        (edge: CGFloat, top: CGFloat, bottom: CGFloat) = (0, 0, 0)
 
     /// resolveSpacingInsetの前回値(変化検出ログ用)
     private static var lastSpacingInset: (column: CGFloat, row: CGFloat) = (column: 0, row: 0)

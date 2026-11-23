@@ -412,7 +412,8 @@ struct ShelfView: View {
     // 余白の導出値は独立した設定ではなく間隔設定値からの導出値
     // (edgePadding=columnSpacing、topPadding=max(4,rowSpacing)、
     //  bottomPadding=rowSpacing)で、構造プラグインが
-    //  shelfPaddingInsetで要求する追加分(例: Record Rackの外枠太さ)
+    //  shelfPaddingInset(辺別はshelfPaddingInsets)で要求する
+    //  追加分(例: Record Rackの外枠太さ・上面の奥行き帯)
     //  が導出値へ加算される(effectivePadding参照。導出値は
     //  常に保持される)。間隔設定値は設定画面のスライダーで変更可能。
     // ウィンドウサイズはこれらと設定値から厳密に計算する。
@@ -503,6 +504,23 @@ struct ShelfView: View {
             topPadding: topPadding,
             bottomPadding: bottomPadding
         )
+        // スロットごとのコンテンツオフセット(構造プラグインの
+        // slotContentOffset。例: Record Rackは開口の中央・床の上へ
+        // レコードをずらす)。ピッチ・幅高さ計算・ウィンドウサイズは
+        // 変えず、セルの描画を.offsetでずらすだけ。
+        // ヒット判定・ドロップゾーン・ゴースト着地も同じずれを
+        // 使う必要がある(slotVisualRect参照)
+        let slotOffsets = (0..<slots.count).map {
+            ShelfPluginRegistry.slotContentOffset(
+                slot: $0, resolved: resolvedShelf)
+        }
+        // 上辺のウィンドウ移動ドラッグ帯の高さ。1段目レコードが
+        // slotContentOffsetで上方向(dy < 0)へせり上がる場合は
+        // レコード上端と重ならない高さまで縮める
+        let topDragHeight = ShelfPlacement.topDragStripHeight(
+            topPadding: topPadding,
+            columns: min(columnCount, slots.count)
+        ) { slotOffsets[$0] }
 
         // ウィンドウはwindowResizability(.contentSize)なので、
         // この固定フレームがそのままmin=maxのウィンドウサイズになる
@@ -555,6 +573,10 @@ struct ShelfView: View {
                         dropZone(slot: slot, after: true)
                     }
                 }
+                // 構造プラグインのコンテンツオフセット(開口の中央・
+                // 床の上)。レイアウト(ピッチ)は変えず見た目だけずれ、
+                // ヒット判定・ドロップゾーンも一緒に動く
+                .offset(slotOffsets[slot.index])
             }
         }
         .padding(EdgeInsets(
@@ -599,14 +621,17 @@ struct ShelfView: View {
         .frame(width: frameW, height: frameH)
         // タイトルバーを隠してコンテンツを上端まで広げたため、AppKitの
         // タイトルバー(=ウィンドウ移動)のドラッグ領域が無くなる。
-        // 上辺の余白(topPadding。導出値の下限4ptが最低帯幅を保証する)を
-        // つかんでウィンドウを動かせるようにする
+        // 上辺の余白(topDragHeight。通常はtopPadding、1段目レコードが
+        // slotContentOffsetで上へせり上がる場合はレコード上端と重ならない
+        // 範囲まで縮小)をつかんでウィンドウを動かせるようにする
         // (Musicアプリのミニプレーヤーと同じ「余白をつかんで移動」)
         .overlay(alignment: .top) {
-            Color.clear
-                .frame(height: topPadding)
-                .contentShape(Rectangle())
-                .gesture(WindowDragGesture())
+            if topDragHeight > 0 {
+                Color.clear
+                    .frame(height: topDragHeight)
+                    .contentShape(Rectangle())
+                    .gesture(WindowDragGesture())
+            }
         }
         // 右上のシェルフ操作ツールバー(Musicアプリのウィンドウ右上と同じ
         // 「共有+3点リーダー」のカプセル)。シェルフ操作メニューは空きスロットの
@@ -662,7 +687,7 @@ struct ShelfView: View {
         // クランプ状態の遷移時だけログ(body評価のたびに出るのを防ぐ)。
         // onAppearではレイアウト検証用に計算結果(グリッドの実寸と窓の関係)を1回出す
         .onAppear {
-            Self.logger.notice("grid layout: cell=\(cell, privacy: .public) columns=\(columnCount, privacy: .public) rows=\(rowCount, privacy: .public) frame=\(Int(frameW), privacy: .public)x\(Int(frameH), privacy: .public) natural=\(Int(width), privacy: .public)x\(Int(height), privacy: .public)")
+            Self.logger.notice("grid layout: cell=\(cell, privacy: .public) columns=\(columnCount, privacy: .public) rows=\(rowCount, privacy: .public) frame=\(Int(frameW), privacy: .public)x\(Int(frameH), privacy: .public) natural=\(Int(width), privacy: .public)x\(Int(height), privacy: .public) topDrag=\(topDragHeight, privacy: .public)/\(topPadding, privacy: .public)")
             if clamped {
                 Self.logClamp(natural: CGSize(width: width, height: height),
                               clamped: CGSize(width: frameW, height: frameH))
@@ -673,6 +698,9 @@ struct ShelfView: View {
                 Self.logClamp(natural: CGSize(width: width, height: height),
                               clamped: CGSize(width: frameW, height: frameH))
             }
+        }
+        .onChange(of: topDragHeight) { oldValue, newValue in
+            Self.logger.notice("top drag strip height changed: \(oldValue, privacy: .public)->\(newValue, privacy: .public) (topPadding=\(topPadding, privacy: .public) shelf=\(self.shelfID, privacy: .public))")
         }
         .background {
             WindowConfigurator(
@@ -1093,7 +1121,7 @@ struct ShelfView: View {
                         return self.transferDrop(payload, atSlot: s)
                     }
                     let droppedID = payload.entry.id
-                    Self.logger.notice("record dropped: dragged=\(droppedID, privacy: .public) slot=\(slot.index, privacy: .public) occupied=\(slot.entry != nil, privacy: .public) target='\(slot.entry?.title ?? "", privacy: .public)' after=\(after, privacy: .public) location=(\(location.x, privacy: .public), \(location.y, privacy: .public)) zoneRect=\(NSStringFromRect(self.slotRect(index: slot.index)), privacy: .public)")
+                    Self.logger.notice("record dropped: dragged=\(droppedID, privacy: .public) slot=\(slot.index, privacy: .public) occupied=\(slot.entry != nil, privacy: .public) target='\(slot.entry?.title ?? "", privacy: .public)' after=\(after, privacy: .public) location=(\(location.x, privacy: .public), \(location.y, privacy: .public)) zoneRect=\(NSStringFromRect(self.slotVisualRect(index: slot.index, resolved: self.resolvedShelfStructure())), privacy: .public)")
                     // ドロップ成立=セッション終了。モニタより先にここで戻す
                     self.draggedID = nil
                     self.clearDropTarget()
@@ -1320,31 +1348,56 @@ struct ShelfView: View {
 
     /// グリッド座標から挿入位置(対象スロットのindexと直後フラグ)を出す。
     /// セル間のギャップやグリッド範囲外はnil(呼び出し側では末尾扱い)。
-    /// セル内の左半分=直前、右半分=直後(セル背面のドロップゾーンと同じ規則)
+    /// セル内の左半分=直前、右半分=直後(セル背面のドロップゾーンと同じ規則)。
+    /// 判定はピッチ位置ではなく見た目の矩形(slotVisualRect)で行う:
+    /// コンテンツオフセットでずれたレコードはピッチ上のセルや
+    /// グリッド範囲をはみ出しうる(床の上へ下がる等)ので、ピッチで
+    /// 引いたセルとその周囲3×3を総当たりする
     private func slotInsertion(atGridPoint g: CGPoint) -> (index: Int, after: Bool)? {
         let settings = store.settings
         let cell = settings.artworkSize.points
         // グリッドの実ピッチはeffectiveSpacing(設定値+プラグインの
         // spacing inset)。shelfGridのGridItem spacingと同じ値で
-        // ないとギャップ判定がずれる
+        // ないとピッチ上のセル位置がずれる
         let spacing = ShelfPluginRegistry.effectiveSpacing(settings: settings)
         let stepX = cell + spacing.column
         let stepY = cell + spacing.row
-        guard g.x >= 0, g.y >= 0 else { return nil }
+        // 早期の範囲ガードはしない: オフセットされたレコードは
+        // ピッチ上のセルを上下左右へはみ出しうる(上端の開口寄りへ
+        // 持ち上がる・端列が余白へ出る等)ので、負側/範囲外も
+        // 候補の範囲チェック側で自然にnilになるまで見る
         let column = Int(g.x / stepX)
         let row = Int(g.y / stepY)
-        guard column < settings.columns, row < settings.rows else { return nil }
-        let intraX = g.x - CGFloat(column) * stepX
-        let intraY = g.y - CGFloat(row) * stepY
-        // セル間スペーシング上は挿入位置を一意に決められないので対象外
-        guard intraX < cell, intraY < cell else { return nil }
-        return (row * settings.columns + column, intraX >= cell / 2)
+        // 棚レベルプラグインは1回だけ解決する(スロットごとの
+        // settings経路の再解決=resolveShelf数百回/マウス移動を防ぐ)
+        let resolved = resolvedShelfStructure()
+        // ピッチ上のセルを先に見て、はずれたらオフセットではみ出した
+        // レコードを拾うため周囲3×3を見た目の矩形で総当たりする
+        // (オフセットは1ピッチより小さいので3×3で足りる)
+        var candidates = [(column, row)]
+        for dr in -1...1 {
+            for dc in -1...1 where dr != 0 || dc != 0 {
+                candidates.append((column + dc, row + dr))
+            }
+        }
+        for (c, r) in candidates {
+            guard c >= 0, r >= 0,
+                  c < settings.columns, r < settings.rows else { continue }
+            let index = r * settings.columns + c
+            let rect = slotVisualRect(index: index, resolved: resolved)
+            guard rect.contains(g) else { continue }
+            return (index, g.x >= rect.midX)
+        }
+        return nil
     }
 
     /// ドロップゾーン(セル半分)のローカル座標→グリッド座標。
-    /// ゾーンはセルの半分なので、右半分のゾーンはセル幅の半分だけxを進める
+    /// ゾーンはセルの半分なので、右半分のゾーンはセル幅の半分だけxを進める。
+    /// ゾーン自体はセルと一緒に.offsetでずれて描かれるため、
+    /// 元の矩形は見た目の矩形(slotVisualRect)を使う
     private func dropZoneGridPoint(_ location: CGPoint, slot: Slot, after: Bool) -> CGPoint {
-        let rect = slotRect(index: slot.index)
+        let rect = slotVisualRect(
+            index: slot.index, resolved: resolvedShelfStructure())
         let cell = store.settings.artworkSize.points
         return CGPoint(
             x: rect.minX + (after ? cell / 2 : 0) + location.x,
@@ -1373,6 +1426,9 @@ struct ShelfView: View {
         // スロット中心の幾何は実ピッチ(effectiveSpacing)で計算する。
         // shelfGridのGridItem spacingと同じ値でないと最近傍判定がずれる
         let spacing = ShelfPluginRegistry.effectiveSpacing(settings: settings)
+        // オフセットはクロージャでスロットごとに読まれるので、
+        // 棚レベルプラグインはここで1回だけ解決して渡す
+        let resolved = resolvedShelfStructure()
         return ShelfPlacement.nearestEmptySlot(
             entries: store.entries,
             capacity: store.capacity,
@@ -1381,7 +1437,13 @@ struct ShelfView: View {
             columnSpacing: spacing.column,
             rowSpacing: spacing.row,
             at: g
-        )
+        ) { index in
+            // 空きスロットの見た目の中心もコンテンツオフセットぶん
+            // ずれている(レコードが置かれる位置=キュービーの中央)ので、
+            // 距離判定はピッチ中心+オフセットで行う
+            ShelfPluginRegistry.slotContentOffset(
+                slot: index, resolved: resolved)
+        }
     }
 
     /// スロット位置からそのスロットの安定ID(占有=エントリid、空き="empty-N")。
@@ -1686,9 +1748,12 @@ struct ShelfView: View {
     /// (content.convertの座標変換はfullSizeContentView構成でYが狂うため
     ///  frame基準で自分で計算する — 2026-10-24実測)。
     /// グリッドがScrollView内にある場合はスクロール量を引いて補正する。
+    /// 矩形は見た目の矩形(slotVisualRect。ピッチ位置だと着地した
+    /// レコードがずれてスナップする)
     private func slotScreenCenter(index: Int) -> CGPoint? {
         guard let window = windowBox.window else { return nil }
-        let rect = slotRect(index: index)
+        let rect = slotVisualRect(
+            index: index, resolved: resolvedShelfStructure())
         // ScrollViewはグリッドが画面より大きいときだけ存在する。
         // SwiftUIのスクロールコンテンツはflippedなので、
         // documentVisibleRect.originが左上基準のスクロール量になる。
@@ -1716,7 +1781,44 @@ struct ShelfView: View {
         return nil
     }
 
-    /// index番スロットのグリッド座標系での矩形(LazyVGridのpaddingより内側)
+    /// 棚レベルプラグインの解決済みリスト。
+    /// コンテンツオフセットを複数スロットへ読む経路(ヒット判定・
+    /// 最近傍空きスロット等)では呼び出し側がこれで1回だけ解決し、
+    /// slotVisualRect/slotContentOffsetのresolved版へ渡すこと
+    /// (スロットごとにsettings経路で再解決すると、マウス移動の
+    /// たびにresolveShelfが数百回走る)
+    private func resolvedShelfStructure() -> [ResolvedShelfStructure] {
+        let settings = store.settings
+        let spacing = ShelfPluginRegistry.effectiveSpacing(settings: settings)
+        let padding = ShelfPluginRegistry.effectivePadding(settings: settings)
+        return ShelfPluginRegistry.resolveShelf(
+            settings: settings,
+            cellSize: settings.artworkSize.points,
+            columnSpacing: spacing.column,
+            rowSpacing: spacing.row,
+            edgePadding: padding.edge,
+            topPadding: padding.top,
+            bottomPadding: padding.bottom)
+    }
+
+    /// index番スロットの見た目の矩形 = ピッチ位置(slotRect) +
+    /// 構造プラグインのコンテンツオフセット(例: Record Rackは
+    /// 開口の中央・床の上へレコードをずらす)。
+    /// ヒット判定・ドロップゾーン・ゴースト着地など「見た目の
+    /// 位置」を読む側は必ずこちらを使うこと
+    /// (生のslotRectはピッチ位置なのでずれている)
+    private func slotVisualRect(
+        index: Int, resolved: [ResolvedShelfStructure]
+    ) -> CGRect {
+        let offset = ShelfPluginRegistry.slotContentOffset(
+            slot: index, resolved: resolved)
+        return slotRect(index: index).offsetBy(
+            dx: offset.width, dy: offset.height)
+    }
+
+    /// index番スロットのグリッド座標系での矩形(LazyVGridの
+    /// paddingより内側)。**ピッチ位置**で、コンテンツオフセットは
+    /// 含まない(見た目の位置が要るときはslotVisualRectを使う)
     private func slotRect(index: Int) -> CGRect {
         let settings = store.settings
         let cell = settings.artworkSize.points
