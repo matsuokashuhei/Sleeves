@@ -43,6 +43,68 @@ enum ShelfPluginLayout {
     }
 }
 
+/// 窓コンテンツの透明切り欠き(プラグインフック(j)
+/// shelfTransparentRegions用)。全域から宣言された矩形を減算した
+/// 「残り領域」を複数矩形の和として構成する。
+/// 抜けた領域はガラスも含めて描画されず、窓の向こう側
+/// (デスクトップ)がそのまま透ける。
+/// 使い方: `.clipShape(WindowNotchShape(regions: r))`。
+/// 切り欠き内部はSwiftUIのヒット判定も無くなるので、
+/// インタラクティブな要素が必要な領域は切り欠きに
+/// 含めてはいけない。clipShapeはFillStyleを指定できないので
+/// even-oddの穴抜きは使えず、減算した残りを矩形和で構成する。
+/// regionsが空なら全域=クリップなしと同じ
+struct WindowNotchShape: Shape {
+    let regions: [CGRect]
+    func path(in rect: CGRect) -> Path {
+        // 残り矩形集合 = 全域から各切り欠きを順に減算
+        var remaining = [rect]
+        for notch in regions {
+            remaining = remaining.flatMap {
+                Self.subtracting(notch, from: $0)
+            }
+        }
+        var path = Path()
+        for r in remaining where r.width > 0 && r.height > 0 {
+            path.addRect(r)
+        }
+        return path
+    }
+
+    /// rectからnotchの交差部を除いた残りを最大4矩形(上下左右)に
+    /// 分割して返す(交差なし=そのまま)
+    private static func subtracting(
+        _ notch: CGRect, from rect: CGRect
+    ) -> [CGRect] {
+        let inter = rect.intersection(notch)
+        guard !inter.isNull, inter.width > 0, inter.height > 0 else {
+            return [rect]
+        }
+        var out: [CGRect] = []
+        if inter.minY > rect.minY {
+            out.append(CGRect(
+                x: rect.minX, y: rect.minY,
+                width: rect.width, height: inter.minY - rect.minY))
+        }
+        if inter.maxY < rect.maxY {
+            out.append(CGRect(
+                x: rect.minX, y: inter.maxY,
+                width: rect.width, height: rect.maxY - inter.maxY))
+        }
+        if inter.minX > rect.minX {
+            out.append(CGRect(
+                x: rect.minX, y: inter.minY,
+                width: inter.minX - rect.minX, height: inter.height))
+        }
+        if inter.maxX < rect.maxX {
+            out.append(CGRect(
+                x: inter.maxX, y: inter.minY,
+                width: rect.maxX - inter.maxX, height: inter.height))
+        }
+        return out
+    }
+}
+
 /// プラグインが設定画面のどのセクションに属するか(表示上の分類)。
 /// レジストリ順(=適用順)とは独立で、永続化スキーマにも影響しない。
 /// プラグインファイルもおおむねこの分類ごとのサブディレクトリ
@@ -290,6 +352,17 @@ protocol ShelfPlugin {
     func slotContentOffset(
         slot: Int, context: ShelfStructureContext
     ) -> CGSize
+
+    /// (j) 窓コンテンツを「何も描かない=デスクトップまで透明」で
+    /// 抜く矩形群。構造プラグインが「キャビネットのシルエットに
+    /// 含めない領域」(例: Record Rackの後退した台座の両脇の空き)
+    /// を宣言するフック(既定[]=抜きなし)。
+    /// ShelfView/ShelfShareViewはグリッドとガラス背景へ
+    /// WindowNotchShapeのclipShapeで抜く。切り欠き内部はSwiftUIの
+    /// ヒット判定も無くなるので、操作に必要な領域は宣言しては
+    /// いけない(座標はグリッドのpadding込み
+    /// フレームの左上原点=ShelfStructureContextと同じ系)
+    func shelfTransparentRegions(context: ShelfStructureContext) -> [CGRect]
 }
 
 extension ShelfPlugin {
@@ -316,6 +389,7 @@ extension ShelfPlugin {
     func slotContentOffset(
         slot: Int, context: ShelfStructureContext
     ) -> CGSize { .zero }
+    func shelfTransparentRegions(context: ShelfStructureContext) -> [CGRect] { [] }
 }
 
 /// 有効化済みプラグインと解決済みコンテキストのペア
@@ -479,6 +553,17 @@ enum ShelfPluginRegistry {
                 edgePadding: padding.edge,
                 topPadding: padding.top,
                 bottomPadding: padding.bottom))
+    }
+
+    /// (j) 有効プラグインが宣言する窓の透明領域の合成
+    /// (全プラグインの矩形を結合して返す)。
+    /// ShelfView/ShelfShareViewの窓クリップ用
+    static func transparentRegions(
+        resolved: [ResolvedShelfStructure]
+    ) -> [CGRect] {
+        resolved.flatMap {
+            $0.plugin.shelfTransparentRegions(context: $0.context)
+        }
     }
 
     /// 有効プラグインが要求する外周余白への追加分(成分ごとの

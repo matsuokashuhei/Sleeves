@@ -471,7 +471,7 @@ resolve/resolveShelfでもsettingsのenabledフラグを無視する。
 ShelfSettingsのデコード時にwallのstaleなenabled=falseはtrueへ
 正規化される(pluginSummaryが"off"と誤報しないため)。
 
-フックは8種(デフォルト全てno-op、必要なものだけオーバーライド)。
+フックは10種(デフォルト全てno-op、必要なものだけオーバーライド)。
 (a)〜(d)はセル単位で`applyingJacketPlugins`/`applyingCellPlugins`
 が合成し、(e)(f)はグリッド単位でresolveShelfが解決してShelfViewの
 grid .background/.overlayへ重畳する。(a)〜(c)内での合成順は
@@ -512,15 +512,24 @@ grid .background/.overlayへ重畳する。(a)〜(c)内での合成順は
   settings経路の再解決を避け、1回解決した
   `[ResolvedShelfStructure]`をslotContentOffset(slot:resolved:)
   へ渡す(resolveShelf数百回/マウス移動を防ぐ)
-- (j) `shelfTransparentRegions` — 窓コンテンツを透明で抜く矩形群を
-  構造プラグインが宣言するフック構想(例: Record Rackの台座両脇を
-  抜いてデスクトップを透かす)。**2026-11-23に撤去**:
-  mask(描画アルファ連動)・clipShapeいずれでも透明な余白帯
-  (ドラッグ帯・ドロップゾーン・右クリック判定)のヒット判定が
-  死ぬ回帰が発生し、destinationOutによるピクセル打ち抜きでも
-  ユーザー検証で操作不能が解消しなかったため、切り欠き方式は
-  採用しない(台座両脇は引き続き「底板の下に潜り込んだ影」として
-  塗り潰す方針)
+- (j) `shelfTransparentRegions` — 窓コンテンツを透明で抜く矩形群
+  (既定[]=抜きなし)。構造プラグインが「キャビネットの
+  シルエットに含めない領域」を宣言するフック。ShelfViewは
+  グリッド(フレーム直後・オーバーレイ群の手前)とガラス背景の
+  両方へ`WindowNotchShape`(全域−矩形を矩形和で構成するShape)
+  のclipShapeを掛け、抜けた領域はガラスも含めて描かれず
+  デスクトップがそのまま透ける。**切り欠き内部はSwiftUIの
+  ヒット判定も無くなる**(ので操作に必要な領域は宣言しては
+  いけない)。clamped(ScrollView化)時はコンテンツ
+  座標がスクロール分ずれるため切り欠きは無効化する。
+  ShelfShareView(静的画像)も同じclipShapeで揃える。
+  レジストリ集約は`ShelfPluginRegistry.transparentRegions(resolved:)`
+  ※過去にmask/clipShape/destinationOutを試して「操作が全滅」
+    と報告されたが、真因は切り欠きではなくWindowDragGestureの
+    複数シェルフ時の不具合だった(HEADでも再現。WindowDragStrip
+    化で解決済み)。clipShape適用をフレーム直後・オーバーレイ手前
+    にしているのは、ドラッグ帯/ツールバー/ドロップ受けの判定を
+    温存するため
 
 合成系フックのほか、棚レベルの外周余白への追加要求フック
 `shelfPaddingInset(values:)` がある(既定0=要求なし)。構造
@@ -630,17 +639,17 @@ jacketShape(cellIndex:)。実物のLPジャケットは角ごとにわずかに�
   下縁に下側部材の上面=キュービーの床を描く(depth=0は
   従来どおり。床/上面は「上から見える水平面」の共通
   ライティング=手前縁が明るく奥縁へAO)。台輪は窓下端の
-  後退した台座: 本体より左右plinthInset(定数=7)ずつ幅狭で
-  端は角張り、両脇の帯は「底板の下に潜り込んだ影」として
-  黒0.62→0.38の縦グラデで塗り潰す(plinthSideShadowTop/
-  Bottom定数)。bottom insetにplinthBoost(定数)を加算して
-  嵩上げし、台座の上端には底板張り出しの落ち影、底板下端に
-  段差線、下端を暗く締める(本体を窓端から内側へ寄せる幅広
-  張り出しや、前面に張り出す天面ledgeの光る表現は正面図では
-  読めず却下された。台座両脇を窓ごと透明に抜く
-  shelfTransparentRegions方式は2026-11-23に試したが、
-  透明余白帯のヒット判定が死ぬ回帰が解消せず撤去 — フックj項
-  参照)。
+  後退した台座: 本体より左右plinthInset(定数=16。窓の角丸
+  半径≈14ptを超える値でないと台座の外下角が窓の角丸に
+  食われて丸く見える)ずつ幅狭で端は角張り、脇の帯は
+  shelfTransparentRegions(フックj)でガラスも含めて窓ごと
+  透明に抜き、デスクトップが透ける=台座が床に立つベースに
+  見える(脇の帯を暗い影で塗り潰す版は「台座の背後に不要な
+  部分が見える」と却下された)。bottom insetにplinthBoost
+  (定数)を加算して嵩上げし、台座の上端には底板張り出しの
+  落ち影、底板下端に段差線、下端を暗く締める(本体を窓端から
+  内側へ寄せる幅広張り出しや、前面に張り出す天面ledgeの
+  光る表現は正面図では読めず却下された)。
   木目はWoodTextureをbaseScale=0.5+repeats=trueでタイル貼り
   (woodTextureScale定数で調整。部材がテクスチャより長い
   場合は拡大せずタイルで繰り返す)

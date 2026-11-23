@@ -157,11 +157,6 @@ struct ShelfView: View {
             // グリッドの高さを一致させる。なお描画とヒットテストは下の
             // shelfGrid側のフレーム(実際のグリッド高)がそのまま使われる
             .padding(.bottom, -Self.titlebarInset)
-            .background {
-                // ignoresSafeAreaでタイトルバー帯の下までガラスを伸ばす
-                GlassBackgroundView()
-                    .ignoresSafeArea()
-            }
         // レコード削除の確認はカスタムパネル(DeleteConfirmationDialog)で
         // 行う(confirmDelete(_:)参照)。SwiftUIの.alertは使わない —
         // 「Don't Ask Again」チェックボックスでsettings.confirmDeleteへ
@@ -543,6 +538,13 @@ struct ShelfView: View {
             topPadding: topPadding,
             columns: min(columnCount, slots.count)
         ) { slotOffsets[$0] }
+        // 窓の透明切り欠き(構造プラグインのshelfTransparentRegionsの
+        // 合成。例: Record Rackは台座の両脇を抜く)。座標は
+        // グリッドのpadding込みフレーム系なので、clamped(ScrollView化)
+        // でコンテンツがスクロールする状態では窓座標とずれる=無効化
+        let notchRegions: [CGRect] = clamped
+            ? [] : ShelfPluginRegistry.transparentRegions(
+                resolved: resolvedShelf)
 
         // ウィンドウはwindowResizability(.contentSize)なので、
         // この固定フレームがそのままmin=maxのウィンドウサイズになる
@@ -641,6 +643,13 @@ struct ShelfView: View {
             }
         }
         .frame(width: frameW, height: frameH)
+        // 窓の透明切り欠き(例: Record Rackの台座両脇)。コンテンツを
+        // WindowNotchShapeで幾何クリップし、抜けた領域は窓ごと透明に
+        // する(ヒット判定も抜けてクリックは窓を素通しする)。
+        // オーバーレイ群より手前に適用するので、ドラッグ帯・
+        // ツールバー・ドロップ受けのヒット判定はそのまま残る
+        // (切り欠きはプラグインが操作不要と宣言した領域だけ)
+        .clipShape(WindowNotchShape(regions: notchRegions))
         // タイトルバーを隠してコンテンツを上端まで広げたため、AppKitの
         // タイトルバー(=ウィンドウ移動)のドラッグ領域が無くなる。
         // 上辺の余白(topDragHeight。通常はtopPadding、1段目レコードが
@@ -727,6 +736,14 @@ struct ShelfView: View {
         }
         .onChange(of: topDragHeight) { oldValue, newValue in
             Self.logger.notice("top drag strip height changed: \(oldValue, privacy: .public)->\(newValue, privacy: .public) (topPadding=\(topPadding, privacy: .public) shelf=\(self.shelfID, privacy: .public))")
+        }
+        .background {
+            // ignoresSafeAreaでタイトルバー帯の下までガラスを伸ばす。
+            // ガラス(NSVisualEffectView)も同じ切り欠きでクリップ
+            // しないと、抜いた領域が曇りガラスとして残って透けない
+            GlassBackgroundView()
+                .ignoresSafeArea()
+                .clipShape(WindowNotchShape(regions: notchRegions))
         }
         .background {
             WindowConfigurator(

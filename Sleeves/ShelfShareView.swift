@@ -145,6 +145,11 @@ struct ShelfShareView: View {
         // 自然サイズで固定。ImageRendererはこのフレームをそのまま
         // 画像サイズ(scale=2でRetinaのピクセル数)として描く
         .frame(width: width, height: height)
+        // 窓の透明切り欠き(shelfTransparentRegions。例: Record Rackの
+        // 台座両脇)はスナップショットにも同じ形で反映する
+        .clipShape(WindowNotchShape(
+            regions: ShelfPluginRegistry.transparentRegions(
+                resolved: resolvedShelf)))
     }
 }
 

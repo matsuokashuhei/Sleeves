@@ -70,7 +70,8 @@
 //     一部を使う)
 //   - 台輪: 窓下端に置く後退した台座。本体より左右
 //     plinthInsetずつ幅狭(端は角張り)で、両脇の帯は
-//     底板の下に潜り込んだ暗い空きとして影で塗る。
+//     shelfTransparentRegionsで窓ごと透明に抜く
+//     (デスクトップが透け、台座が床に立つベースに見える)。
 //     高さ = min(bottomPadding×0.35, bottomPadding−bottomFace)
 //     (bottomFaceはクランプ後の実効幅)。下辺insetの
 //     plinthBoostぶんbottomPaddingが増えるのでベースは
@@ -138,8 +139,8 @@
 //   - (e) 外枠: 左右側板(窓端寄せ、縦目)→天板(同。全幅で
 //     側板の上に被さる。上端に2-3ptの明るい上面スリバ)→
 //     底板+台輪(台輪は本体より左右へ後退した幅狭の暗い
-//     台座。上端に底板張り出しの落ち影、脇の帯は影の空き、
-//     下端を暗く締める)
+//     台座。上端に底板張り出しの落ち影、脇の帯は窓ごと透明に
+//     抜く切り欠き、下端を暗く締める)
 //
 //  オーバーレイは合成側(ShelfView.shelfGrid)が
 //  .allowsHitTesting(false) で重ねるので、再生タップ・D&D・
@@ -240,28 +241,28 @@ struct RackShelfPlugin: ShelfPlugin {
     /// bottomPadding−底板実効幅(底板の上に残る空き)の小さい方に
     /// クランプ(枠が太いと台輪が潰れる)。実家具の台座に倣い
     /// 本体より左右plinthInsetずつ幅狭・端は角張り・全体を
-    /// 影に落とす。両脇の帯は底板の下に潜り込んだ暗い空き
-    /// (壁は見せない)、台座の上端には底板の張り出しが落とす影を
-    /// 描く(後退した台座には光の当たる天面は見えない)
+    /// 影に落とす。両脇の帯[0,inset)はshelfTransparentRegionsで
+    /// 窓ごと透明に抜き(ガラスも壁も描かれずデスクトップが透ける)、
+    /// 台座の上端には底板の張り出しが落とす影を描く
+    /// (後退した台座には光の当たる天面は見えない)
     private static let plinthRatio: CGFloat = 0.35
     /// 台輪の高さへの加算量(pt)。shelfPaddingInsetsのbottom
     /// 要求へ加算して窓ごと下へ広げる: bottomPadding−bottomFace
     /// が増えて台輪がそのぶん高くなる(実家具の台座の存在感)
     private static let plinthBoost: CGFloat = 7
-    /// 台輪の左右への後退量(pt)。台座は本体よりこのぶんだけ
-    /// 左右へ細く、脇の帯[0,inset)は底板の下の影として塗る
-    private static let plinthInset: CGFloat = 7
+    /// 台輪の左右への後退量=脇の透明切り欠き幅(pt)。
+    /// 窓の角丸半径(macOS 26実測≈14pt)を超える値にして、
+    /// 台座の外端が窓の角丸に食われず角張って見えるようにする
+    /// (inset < 角丸半径だと台座の外下角が窓の角丸で削れて
+    ///  丸く見える)
+    private static let plinthInset: CGFloat = 16
     /// 台座前面の暗さ(影に沈んだ一段暗い板)
     private static let plinthDarken: Double = 0.30
     /// 台座上端の落ち影(手前に張り出した底板が台座の上端へ
     /// 落とす影)の深さと濃さ
     private static let plinthTopShadowDepth: CGFloat = 3
     private static let plinthTopShadowOpacity: Double = 0.5
-    /// 台座両脇の帯(底板の下に潜る空き)の暗さ。
-    /// 上=底板直下で最も濃く、下へ僅かに抜ける縦グラデ
-    private static let plinthSideShadowTop: Double = 0.62
-    private static let plinthSideShadowBottom: Double = 0.38
-    /// 底板の下端につける段差線(底板前面と台座・脇の影の境目)
+    /// 底板の下端につける段差線(底板前面と台座・脇の空きの境目)
     private static let plinthStepOpacity: Double = 0.15
     /// 台座前面の下端を締める暗さ(床への落ち影)
     private static let plinthBottomOpacity: Double = 0.34
@@ -609,39 +610,12 @@ struct RackShelfPlugin: ShelfPlugin {
                         openingEdges: [.top])
                     if members.plinthH > 0 {
                         // 台座帯の範囲(全幅)。台座本体は
-                        // [inset, width−inset]に幅狭く後退させ、
-                        // 両脇の帯は底板の下の影として塗る
+                        // [inset, width−inset]に幅狭く後退させる。
+                        // 両脇の帯はshelfTransparentRegionsで窓ごと
+                        // 透明に抜かれるのでここでは何も描かない
                         let band = CGRect(
                             x: 0, y: size.height - members.plinthH,
                             width: size.width, height: members.plinthH)
-                        // 左右の脇の帯 = 底板の下に潜り込んだ影の
-                        // 空き(壁を見せない)。上=底板直下で最も濃く、
-                        // 下へ僅かに抜ける縦グラデ
-                        for strip in [
-                            CGRect(
-                                x: 0, y: band.minY,
-                                width: Self.plinthInset,
-                                height: band.height),
-                            CGRect(
-                                x: size.width - Self.plinthInset,
-                                y: band.minY,
-                                width: Self.plinthInset,
-                                height: band.height),
-                        ] {
-                            gc.fill(
-                                Path(strip),
-                                with: .linearGradient(
-                                    Gradient(colors: [
-                                        .black.opacity(
-                                            Self.plinthSideShadowTop),
-                                        .black.opacity(
-                                            Self.plinthSideShadowBottom),
-                                    ]),
-                                    startPoint: CGPoint(
-                                        x: 0, y: strip.minY),
-                                    endPoint: CGPoint(
-                                        x: 0, y: strip.maxY)))
-                        }
                         // 台座本体: [inset, width−inset]。端は角張り、
                         // 影に沈んだ一段暗い板
                         let plinth = CGRect(
@@ -695,7 +669,7 @@ struct RackShelfPlugin: ShelfPlugin {
                                         x: 0, y: foot.maxY)))
                         }
                         // 底板の下端の段差線(底板前面とその下の
-                        // 台座・脇の影の境目。bottomFace=0なら引かない)
+                        // 台座・脇の空きの境目。bottomFace=0なら引かない)
                         if members.bottomFace > 0 {
                             gc.fill(
                                 Path(CGRect(
@@ -819,6 +793,30 @@ struct RackShelfPlugin: ShelfPlugin {
             height: dy)
     }
 
+    // MARK: - (j) 窓の透明領域
+
+    /// 後退した台座の両脇の空き[0,plinthInset)×台座帯を透明で抜く
+    /// (台座帯と同じ高さ・窓の下端まで)。ガラスも壁も描かれず
+    /// デスクトップが透け、台座が床に立つベースとして見える。
+    /// 幅plinthInsetは窓の角丸半径より大きいので、角丸はすべて
+    /// 透明領域の中に収まり、台座の外端は角張ったまま見える
+    func shelfTransparentRegions(
+        context: ShelfStructureContext
+    ) -> [CGRect] {
+        let members = resolvedMembers(context: context)
+        guard members.plinthH > 0 else { return [] }
+        let size = frameSize(context: context)
+        let y = size.height - members.plinthH
+        return [
+            CGRect(
+                x: 0, y: y,
+                width: Self.plinthInset, height: members.plinthH),
+            CGRect(
+                x: size.width - Self.plinthInset, y: y,
+                width: Self.plinthInset, height: members.plinthH),
+        ]
+    }
+
     // MARK: - 描画パーツ
 
     /// スロット(c, r)の矩形(padding適用済みフレーム座標)。
@@ -835,6 +833,19 @@ struct RackShelfPlugin: ShelfPlugin {
             y: context.topPadding
                 + CGFloat(r) * (context.cellSize + context.rowSpacing),
             width: context.cellSize, height: context.cellSize)
+    }
+
+    /// padding適用済みフレームの全体サイズ(=窓コンテンツの大きさ)。
+    /// 余白+セル+間隔から組み立てる(shelfTransparentRegionsなど、
+    /// Canvasのsizeが手元に無いフック用)
+    private func frameSize(context: ShelfStructureContext) -> CGSize {
+        CGSize(
+            width: context.edgePadding * 2
+                + CGFloat(context.gridColumns) * context.cellSize
+                + CGFloat(context.gridColumns - 1) * context.columnSpacing,
+            height: context.topPadding + context.bottomPadding
+                + CGFloat(context.gridRows) * context.cellSize
+                + CGFloat(context.gridRows - 1) * context.rowSpacing)
     }
 
     /// スロット(c, r)のキュービー開口(aperture)の矩形。
