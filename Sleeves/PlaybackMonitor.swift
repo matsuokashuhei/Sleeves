@@ -155,7 +155,7 @@ final class PlaybackMonitor: ObservableObject {
     func refresh() async {
         let info = await PlaybackEngine.nowPlayingInfo()
         // 変化がないときは@Publishedへの代入を避ける
-        // (2秒おきの無変更publishで20枚のセルが再描画されるのを防ぐ)
+        // (2秒おきの無変更publishで全セルが再描画されるのを防ぐ)
         let newMusicAppPlaying = info?.isPlaying ?? false
         if musicAppPlaying != newMusicAppPlaying { musicAppPlaying = newMusicAppPlaying }
         if currentAlbumTitle != info?.album { currentAlbumTitle = info?.album }

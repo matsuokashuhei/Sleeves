@@ -142,8 +142,12 @@ struct ShelfSettings: Codable, Equatable {
             .joined(separator: ",")
     }
 
-    /// 設定ファイルが無い/読めない場合の既定値(5×4=20枚・Sサイズ)。
-    static let `default` = ShelfSettings(columns: 5, rows: 4, artworkSize: .s)
+    /// 設定ファイルが無い/読めない場合の既定値(4×2=8枚・Lサイズ)。
+    /// 新規シェルフ作成と初回起動の両方で使われる
+    /// (ShelfStore.init → loadFromDisk が読めないとき .default を返す)。
+    /// それ以外のフィールドは init の既定値(shelfStyle=.store・
+    /// plugins空・spacing 12/14・confirmDelete=true)に従う
+    static let `default` = ShelfSettings(columns: 4, rows: 2, artworkSize: .l)
 
     private enum CodingKeys: String, CodingKey {
         case columns, rows, artworkSize, shelfStyle, plugins, confirmDelete
@@ -262,7 +266,7 @@ struct ShelfSettings: Codable, Equatable {
         let rows = try? c.decode(Int.self, forKey: .rows)
         if columns != nil || rows != nil {
             // 手編集などで片方だけ存在する場合は、存在する方を採用し
-            // 欠けた方を既定値(5列/4行)で補完する
+            // 欠けた方を既定値(Self.default)で補完する
             if columns == nil || rows == nil {
                 Self.logger.notice("settings.json has only one dimension (columns=\(columns.map(String.init) ?? "nil", privacy: .public) rows=\(rows.map(String.init) ?? "nil", privacy: .public)); filling missing side with default")
             }
@@ -277,10 +281,13 @@ struct ShelfSettings: Codable, Equatable {
                 confirmDelete: confirmDelete
             )
         } else {
-            // 旧フォーマット(capacity: 6/12/20)からの移行
-            let legacy = (try? c.decode(Int.self, forKey: .legacyCapacity)) ?? 20
-            let layout = Self.legacyLayouts[legacy] ?? (5, 4)
-            self.init(columns: layout.columns, rows: layout.rows, artworkSize: size,
+            // 旧フォーマット(capacity: 6/12/20)からの移行。
+            // キー無し/未登録の値はSelf.defaultの列数・行数で補完する
+            // (legacyLayoutsの既知値は従来通りその配置を使う)
+            let legacy = try? c.decode(Int.self, forKey: .legacyCapacity)
+            let layout = legacy.flatMap { Self.legacyLayouts[$0] }
+            self.init(columns: layout?.columns ?? Self.default.columns,
+                      rows: layout?.rows ?? Self.default.rows, artworkSize: size,
                       shelfStyle: shelfStyle,
                       plugins: plugins, columnSpacing: columnSpacing,
                       rowSpacing: rowSpacing, confirmDelete: confirmDelete)
