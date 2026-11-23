@@ -379,7 +379,7 @@ final class ShelfStore: ObservableObject {
             }
             if downloadedAny {
                 // ダウンロード毎ではなく最後に1回だけ増やす。
-                // (毎回増やすと20枚全部の.taskがそのたびに再起動する)
+                // (毎回増やすと全エントリの.taskがそのたびに再起動する)
                 artworkRevision += 1
             }
         }
