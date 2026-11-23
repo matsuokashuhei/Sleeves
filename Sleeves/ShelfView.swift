@@ -27,7 +27,11 @@ struct ShelfView: View {
     /// シェルフのウィンドウを開き直す係にするためのフラグ
     @State private var isPrimaryWindow: Bool
     @ObservedObject private var store: ShelfStore
-    @ObservedObject private var manager = ShelfManager.shared
+    /// シェルフ削除メニューの有効化状態(最後の1枚は削除不可)。
+    /// ShelfManager.shared全体を@ObservedObjectにするとfocusedStore変化
+    /// (複数シェルフ間のフォーカス切替)のたびに全シェルフのbodyが再評価
+    /// されるため、$shelfIDsだけを.onReceiveで購読する
+    @State private var canDeleteShelf = ShelfManager.shared.shelfIDs.count > 1
     /// 再生用ショートカット未インストールの要求を監視する
     /// (起動時チェックと再生失敗の両方がinstallRequestを進める)
     @ObservedObject private var shortcutInstaller = ShortcutInstaller.shared
@@ -226,6 +230,11 @@ struct ShelfView: View {
         // アラート(削除確認など)を出している間はchromeを自動で隠さない
             .onChange(of: hasModalAlert) { _, active in
                 chrome.setHold("alert", active: active)
+            }
+        // シェルフ一覧の増減だけを購読してDelete Shelfの有効状態を更新する
+        // (ShelfManager全体監視だとfocusedStore変更で全シェルフが再評価される)
+            .onReceive(ShelfManager.shared.$shelfIDs) { shelfIDs in
+                canDeleteShelf = shelfIDs.count > 1
             }
         // 再生状態はAlbumSlotViewが個別にmonitorを監視するので、ここでは監視せず
         // 開始/停止だけ行う(画面全体の2秒おき再描画を避ける)。
@@ -426,6 +435,19 @@ struct ShelfView: View {
     private static let toolbarTrailingInset: CGFloat = 18
     private static let toolbarHeight: CGFloat = 24
     private static let toolbarButtonWidth: CGFloat = 37
+
+    /// 右上ツールバー(共有+3点リーダーのカプセル)の矩形(ウィンドウ左上原点)。
+    /// 上部ドラッグ帯(WindowDragStrip)のヒット除外と、右クリックメニュー除外
+    /// (isOverChrome)の双方で同じレイアウト定数から一貫して算出する
+    private static func toolbarTopLeftRect(windowWidth: CGFloat) -> CGRect {
+        let width = toolbarButtonWidth * 2
+        return CGRect(
+            x: windowWidth - toolbarTrailingInset - width,
+            y: toolbarTopInset,
+            width: width,
+            height: toolbarHeight
+        )
+    }
     /// タイトルバー帯(hiddenTitleBar)の高さ。SwiftUIはウィンドウサイズを
     /// 「ビューの理想サイズ+このセーフエリア」で決めるため、理想サイズ側で
     /// 差し引いてウィンドウの下に余白が残るのを防ぐ。実寸は
@@ -623,14 +645,18 @@ struct ShelfView: View {
         // タイトルバー(=ウィンドウ移動)のドラッグ領域が無くなる。
         // 上辺の余白(topDragHeight。通常はtopPadding、1段目レコードが
         // slotContentOffsetで上へせり上がる場合はレコード上端と重ならない
-        // 範囲まで縮小)をつかんでウィンドウを動かせるようにする
+        // 範囲まで縮小)をAppKitベースのWindowDragStripで受け、
+        // NSWindow.performDrag(with:)でウィンドウを動かせるようにする
         // (Musicアプリのミニプレーヤーと同じ「余白をつかんで移動」)
         .overlay(alignment: .top) {
             if topDragHeight > 0 {
-                Color.clear
-                    .frame(height: topDragHeight)
-                    .contentShape(Rectangle())
-                    .gesture(WindowDragGesture())
+                WindowDragStrip(
+                    shelfID: shelfID,
+                    excludedRect: chrome.isVisible
+                        ? Self.toolbarTopLeftRect(windowWidth: frameW)
+                        : nil
+                )
+                .frame(height: topDragHeight)
             }
         }
         // 右上のシェルフ操作ツールバー(Musicアプリのウィンドウ右上と同じ
@@ -823,7 +849,10 @@ struct ShelfView: View {
         let key = ObjectIdentifier(window)
         return NotificationCenter.default.addObserver(
             forName: NSWindow.willCloseNotification, object: window, queue: .main
-        ) { _ in
+        ) { [weak window] _ in
+            if monitorsByWindow[key] != nil {
+                Self.logger.notice("monitors cleaned up on window close: windowNumber=\(window?.windowNumber ?? -1, privacy: .public)")
+            }
             monitorsByWindow[key]?.removeAll()
             monitorsByWindow[key] = nil
         }
@@ -898,14 +927,15 @@ struct ShelfView: View {
             }
         }
         // 右上ツールバーはSwiftUIのビューでNSViewの矩形を持たないため、
-        // ShelfViewのレイアウト定数からカプセルの矩形を組み立てる
-        // (上8pt / 右18pt / 高さ24pt / 幅=ボタン2つ分)。表示中のみ有効
+        // 共通ヘルパー(toolbarTopLeftRect: 左上原点)からウィンドウ座標
+        // (左下原点)へ変換してカプセルの矩形を組み立てる。表示中のみ有効
         guard chrome.isVisible else { return false }
+        let topLeft = Self.toolbarTopLeftRect(windowWidth: window.frame.width)
         let capsule = CGRect(
-            x: window.frame.width - Self.toolbarTrailingInset - Self.toolbarButtonWidth * 2,
-            y: window.frame.height - Self.toolbarTopInset - Self.toolbarHeight,
-            width: Self.toolbarButtonWidth * 2,
-            height: Self.toolbarHeight
+            x: topLeft.minX,
+            y: window.frame.height - topLeft.maxY,
+            width: topLeft.width,
+            height: topLeft.height
         )
         return capsule.contains(event.locationInWindow)
     }
@@ -947,7 +977,7 @@ struct ShelfView: View {
                     Self.logger.notice("shelf delete requested: \(self.shelfID, privacy: .public)")
                     pendingShelfDelete = true
                 }
-                .disabled(manager.shelfIDs.count <= 1)
+                .disabled(!canDeleteShelf)
             } label: {
                 Image(systemName: "ellipsis")
                     .font(.system(size: 14, weight: .semibold))

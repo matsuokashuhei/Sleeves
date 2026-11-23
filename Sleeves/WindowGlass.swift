@@ -52,6 +52,10 @@ struct WindowConfigurator: NSViewRepresentable {
         var onBecameKey: (() -> Void)?
         var onActiveChanged: ((Bool) -> Void)?
         var showTrafficLights = true
+        /// ウィンドウがクローズ処理に入った/閉じたか。
+        /// 閉じた後にSwiftUIのupdateNSViewが走っても、refreshChromeや
+        /// onWindowReady経由でイベントモニタが再登録されてリークしないよう遮断する
+        private(set) var isClosing = false
         /// 信号ボタンの背面に敷くLiquid Glassのカプセル(ウィンドウごと)
         private var trafficLightGlass: NSGlassEffectView?
         /// 信号ボタンの位置を書き換えた回数(再適用が収束しているかの確認用)
@@ -62,6 +66,7 @@ struct WindowConfigurator: NSViewRepresentable {
         /// 位置はAppKitがタイトルバーをレイアウトし直すと標準に戻るため、
         /// ウィンドウ更新のたびに冪等に再適用する
         func refreshChrome() {
+            guard !isClosing else { return }
             let visible = showTrafficLights && (window?.isKeyWindow ?? false)
             // AppKitがタイトルバーをレイアウトし直すと標準位置へ戻るので毎回適用する。
             // 収束したか(毎回リセットされていないか)をログで追えるよう、
@@ -123,6 +128,8 @@ struct WindowConfigurator: NSViewRepresentable {
             if window == nil {
                 trafficLightGlass?.removeFromSuperview()
                 trafficLightGlass = nil
+            } else {
+                isClosing = false
             }
             WindowConfigurator.configure(window)
             refreshChrome()
@@ -145,6 +152,17 @@ struct WindowConfigurator: NSViewRepresentable {
                     self?.onActiveChanged?(window?.isKeyWindow ?? false)
                 }
             }
+            // クローズ検知: 閉じたウィンドウへのupdateNSViewでonWindowReady→
+            // イベントモニタ再登録が起きてリークするのを防ぐ
+            observers.append(
+                NotificationCenter.default.addObserver(
+                    forName: NSWindow.willCloseNotification, object: window, queue: .main
+                ) { [weak self] notification in
+                    let closingWindow = notification.object as? NSWindow
+                    self?.isClosing = true
+                    WindowConfigurator.logger.notice("window will close: windowNumber=\(closingWindow?.windowNumber ?? 0, privacy: .public)")
+                }
+            )
             // タイトルバーのレイアウトで信号ボタンが標準位置へ戻される
             // ことがあるため、ウィンドウ更新のたびに位置を適用し直す
             observers.append(
@@ -188,6 +206,10 @@ struct WindowConfigurator: NSViewRepresentable {
 
     func updateNSView(_ nsView: NSView, context: Context) {
         if let view = nsView as? View {
+            guard !view.isClosing else {
+                Self.logger.debug("updateNSView skipped: window is closing (windowNumber=\(view.window?.windowNumber ?? 0, privacy: .public))")
+                return
+            }
             view.onWindowReady = onWindowReady
             view.onBecameKey = onBecameKey
             view.onActiveChanged = onActiveChanged
@@ -317,4 +339,76 @@ struct WindowConfigurator: NSViewRepresentable {
 /// (ヒットテストを持つとジャケットの上の数ptが反応しなくなる)
 private final class HitTestlessGlassEffectView: NSGlassEffectView {
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
+}
+
+/// ウィンドウ上端のドラッグ移動帯(AppKitベース)。
+/// SwiftUIのWindowDragGestureは複数シェルフ環境で上部ドラッグが効かなくなる
+/// ことがあるため、NSViewのhitTestとNSWindow.performDrag(with:)で確実に
+/// ウィンドウ移動を駆動する。acceptsFirstMouse=trueにより非アクティブ窓からでも
+/// 1回目のクリック&ドラッグで即座に移動できる。
+/// 右上ツールバー表示中の矩形(excludedRect)と可視の標準信号ボタンはhitTestで
+/// nilを返して素通しさせ、ボタン操作を絶対に奪わない。
+struct WindowDragStrip: NSViewRepresentable {
+
+    /// ログ識別用のシェルフID
+    var shelfID: String
+    /// ウィンドウ左上原点・帯ローカル座標でヒット判定から除外する矩形
+    /// (右上ツールバー表示中のみ非nil)
+    var excludedRect: CGRect?
+
+    final class DragStripNSView: NSView {
+        private static let logger = Logger(subsystem: "com.cacheandbuffer.Sleeves", category: "UI")
+
+        var shelfID: String = ""
+        var excludedRect: CGRect?
+
+        override var isFlipped: Bool { true }
+        override var mouseDownCanMoveWindow: Bool { true }
+
+        override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+        override func hitTest(_ point: NSPoint) -> NSView? {
+            let local = convert(point, from: superview)
+            guard bounds.contains(local) else { return nil }
+            if let excludedRect, excludedRect.contains(local) {
+                return nil
+            }
+            if let window {
+                let windowPoint = convert(local, to: nil)
+                for kind in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
+                    guard let button = window.standardWindowButton(kind), !button.isHidden else { continue }
+                    if button.convert(button.bounds, to: nil).contains(windowPoint) {
+                        return nil
+                    }
+                }
+            }
+            return self
+        }
+
+        override func mouseDown(with event: NSEvent) {
+            if event.modifierFlags.contains(.control) {
+                super.mouseDown(with: event)
+                return
+            }
+            guard let window else {
+                Self.logger.error("window drag aborted: no window shelf=\(self.shelfID, privacy: .public)")
+                return
+            }
+            let loc = event.locationInWindow
+            Self.logger.notice("window drag started: windowNumber=\(window.windowNumber, privacy: .public) shelf=\(self.shelfID, privacy: .public) loc=(\(loc.x, privacy: .public), \(loc.y, privacy: .public)) stripH=\(self.bounds.height, privacy: .public)")
+            window.performDrag(with: event)
+        }
+    }
+
+    func makeNSView(context: Context) -> DragStripNSView {
+        let view = DragStripNSView()
+        view.shelfID = shelfID
+        view.excludedRect = excludedRect
+        return view
+    }
+
+    func updateNSView(_ nsView: DragStripNSView, context: Context) {
+        nsView.shelfID = shelfID
+        nsView.excludedRect = excludedRect
+    }
 }

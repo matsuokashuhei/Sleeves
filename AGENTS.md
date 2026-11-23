@@ -260,7 +260,7 @@ pkill -x Sleeves; open .build/Build/Products/Debug/Sleeves.app
   スライダーでtransient更新+400msデバウンスで永続化する。
   余白は `ShelfSettings` の計算プロパティ: `edgePadding`(左右)
   =`columnSpacing`、`topPadding`(上端)=`max(4, rowSpacing)`
-  (4pt下限は下のWindowDragGesture帯確保のため)、
+  (4pt下限は下のWindowDragStrip帯確保のため)、
   `bottomPadding`(下端)=`rowSpacing`(上端と違い下限なし。
   rowSpacing=0では最終行の棚板が0へクランプされるだけ)。
   旧settings.jsonに
@@ -282,10 +282,16 @@ pkill -x Sleeves; open .build/Build/Products/Debug/Sleeves.app
   ジャケット上の帯でもSwiftUIのホスティングビューが返る)。信号ボタン上は
   `_NSThemeCloseWidget` 等が返るのでボタンも押せる
 - コンテンツが上端まで来るとAppKitのタイトルバードラッグ領域が無くなるため、
-  上辺の余白に `WindowDragGesture` を置いてウィンドウ移動を確保している。
-  topPaddingは `max(4, rowSpacing)` の導出値(4pt下限はrowSpacing=0でも
-  帯を残すため、構造プラグインのinsetが加算される)だが、帯の高さは
-  `ShelfPlacement.topDragStripHeight` で算出し、1段目レコードが
+  上辺の余白にAppKitベースの `WindowDragStrip`(`Sleeves/WindowGlass.swift`)を
+  置いて `NSWindow.performDrag(with:)` でウィンドウ移動を確保している
+  (SwiftUIの `WindowDragGesture` は複数シェルフ時に上部ドラッグが効かなくなる
+  ため置換)。`acceptsFirstMouse = true` で非アクティブ窓からでも1回目の
+  クリック&ドラッグで移動でき、右上ツールバー表示中の矩形(`excludedRect`。
+  `ShelfView.toolbarTopLeftRect` を `isOverChrome` と共有)と可視の標準信号ボタン
+  は `hitTest` で `nil` を返して操作を奪わない(Ctrl+クリックもドラッグせず
+  フォールバック)。topPaddingは `max(4, rowSpacing)` の導出値(4pt下限は
+  rowSpacing=0でも帯を残すため、構造プラグインのinsetが加算される)だが、
+  帯の高さは `ShelfPlacement.topDragStripHeight` で算出し、1段目レコードが
   `slotContentOffset` で上方向(`dy < 0`)へせり上がる場合はレコード上端と
   重ならない高さまで縮める(0ならオーバーレイ自体を省く)
 - `slotScreenCenter` のグリッド→画面座標変換からタイトルバー帯の控除は不要
@@ -372,7 +378,17 @@ pkill -x Sleeves; open .build/Build/Products/Debug/Sleeves.app
   `onWindowReady`/`onBecameKey`コールバックで取得
 - **フォーカス中シェルフの追跡**: WindowConfiguratorのdidBecomeKey通知で
   `ShelfManager.focusedStore`を更新。設定画面(SettingsView)はこれを編集する
-  (=「設定はフォーカスしているウィンドウで有効」)
+  (=「設定はフォーカスしているウィンドウで有効」)。なお `ShelfView` は
+  `ShelfManager.shared` を `@ObservedObject` で監視せず(フォーカス切替の
+  たびに全シェルフの `body` が再評価されるのを避けるため)、
+  `ShelfManager.shared.$shelfIDs` だけを `.onReceive` で購読して
+  `Delete Shelf…` の有効/無効(`canDeleteShelf`)を更新する
+- **閉じたウィンドウのモニタ再登録防止**: `WindowConfigurator.View` は
+  `NSWindow.willCloseNotification` で `isClosing = true` を立て(新しい非nil
+  ウィンドウへのアタッチで `false` に戻す)、`updateNSView` で `guard !view.isClosing`
+  として `refreshChrome()` と `onWindowReady` を遮断する(クローズ後に走った
+  `updateNSView` が `monitorsByWindow` へイベントモニタを再登録してリークする
+  不具合の防止)
 - **タイトルバー下のセパレータ線は`.windowStyle(.hiddenTitleBar)`で消す**
   (macOS 26実測): styleMaskに.fullSizeContentViewを挿入しても
   contentLayoutRectがタイトルバー帯を含まず(contentLayout={{0,0},{W,H-32}})、
