@@ -376,6 +376,28 @@ struct ShelfPlacementTests {
         ) == nil)
     }
 
+    @Test func nearestEmptySlotUsesVisualCenterWhenOffset() {
+        // slotOffsetを渡すと距離判定はピッチ中心ではなく
+        // 見た目の中心(ピッチ+オフセット)で行われる。
+        // 2列1行(cell=10, gap=0、全空き): ピッチ中心は
+        // スロット0=(5,5)、スロット1=(15,5)。点(8,5)は
+        // オフセット無しならスロット0が最近傍(d=3<7)だが、
+        // スロット0へ+6・スロット1へ−7のオフセットを掛けると
+        // 見た目中心は(11,5)/(8,5)になりスロット1へ変わる
+        #expect(ShelfPlacement.nearestEmptySlot(
+            entries: [], capacity: 2, columns: 2,
+            cell: 10, columnSpacing: 0, rowSpacing: 0,
+            at: CGPoint(x: 8, y: 5)
+        ) == 0)
+        #expect(ShelfPlacement.nearestEmptySlot(
+            entries: [], capacity: 2, columns: 2,
+            cell: 10, columnSpacing: 0, rowSpacing: 0,
+            at: CGPoint(x: 8, y: 5)
+        ) { i in
+            CGSize(width: i == 0 ? 6 : -7, height: 0)
+        } == 1)
+    }
+
     // MARK: - firstEmptySlot(満杯判定)
 
     @Test func firstEmptySlotFindsHeadGap() {
@@ -469,6 +491,56 @@ struct ShelfPlacementTests {
             entries: entries, draggedID: "x", atSlot: 2, capacity: 5
         )
         #expect(slotsByID(result ?? []) == ["x": 2])
+    }
+
+    // MARK: - topDragStripHeight(上辺ドラッグ帯の高さ)
+
+    @Test func topDragStripHeightKeepsTopPaddingForZeroAndDownwardOffset() {
+        // オフセット無し(デフォルト)・明示ゼロ・下方向(dy > 0)ではtopPaddingを維持
+        #expect(ShelfPlacement.topDragStripHeight(topPadding: 14, columns: 4) == 14)
+        #expect(ShelfPlacement.topDragStripHeight(topPadding: 14, columns: 4) { _ in
+            CGSize(width: 5, height: 0)
+        } == 14)
+        #expect(ShelfPlacement.topDragStripHeight(topPadding: 14, columns: 4) { _ in
+            CGSize(width: 0, height: 6)
+        } == 14)
+    }
+
+    @Test func topDragStripHeightShrinksForUpwardOffset() {
+        // Record Rackでdepth > rowSpacing/2により1段目が上(dy < 0)へずれるケース:
+        // ドラッグ帯は1段目レコードの見た目上端(topPadding + dy)まで縮む
+        #expect(ShelfPlacement.topDragStripHeight(topPadding: 40, columns: 5) { _ in
+            CGSize(width: 0, height: -12)
+        } == 28)
+    }
+
+    @Test func topDragStripHeightMatchesHighestRisingColumn() {
+        // 列ごとに異なるオフセットがある場合は、最も上へせり上がった列に合わせる
+        let dys: [CGFloat] = [4, -3, -9, -1]
+        #expect(ShelfPlacement.topDragStripHeight(topPadding: 20, columns: dys.count) { c in
+            CGSize(width: 0, height: dys[c])
+        } == 11)
+    }
+
+    @Test func topDragStripHeightBoundaries() {
+        // 極端な負オフセット(topPadding + dy < 0)は0へクランプ
+        #expect(ShelfPlacement.topDragStripHeight(topPadding: 10, columns: 3) { _ in
+            CGSize(width: 0, height: -15)
+        } == 0)
+        #expect(ShelfPlacement.topDragStripHeight(topPadding: 10, columns: 3) { _ in
+            CGSize(width: 0, height: -10)
+        } == 0)
+        // topPadding <= 0 は常に0
+        #expect(ShelfPlacement.topDragStripHeight(topPadding: 0, columns: 4) == 0)
+        #expect(ShelfPlacement.topDragStripHeight(topPadding: -6, columns: 4) == 0)
+        #expect(ShelfPlacement.topDragStripHeight(topPadding: -6, columns: 0) == 0)
+        // columns <= 0 はtopPaddingを返す(slotOffsetを呼ばない)
+        #expect(ShelfPlacement.topDragStripHeight(topPadding: 14, columns: 0) { _ in
+            CGSize(width: 0, height: -10)
+        } == 14)
+        #expect(ShelfPlacement.topDragStripHeight(topPadding: 14, columns: -2) { _ in
+            CGSize(width: 0, height: -10)
+        } == 14)
     }
 }
 

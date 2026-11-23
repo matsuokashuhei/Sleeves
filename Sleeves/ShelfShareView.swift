@@ -88,6 +88,14 @@ struct ShelfShareView: View {
             topPadding: topPadding,
             bottomPadding: bottomPadding
         )
+        // スロットごとのコンテンツオフセットもshelfGridと同じ。
+        // 構造プラグインがレコードをずらす場合(Record Rackの
+        // 開口中央/床上配置)、スナップショットも同じ見た目の
+        // 位置に描く
+        let slotOffsets = (0..<slots.count).map {
+            ShelfPluginRegistry.slotContentOffset(
+                slot: $0, resolved: resolvedShelf)
+        }
 
         LazyVGrid(columns: columns, spacing: rowSpacing) {
             ForEach(slots.indices, id: \.self) { index in
@@ -105,6 +113,7 @@ struct ShelfShareView: View {
                     }
                 }
                 .frame(width: cell, height: cell)
+                .offset(slotOffsets[index])
             }
         }
         .padding(EdgeInsets(
@@ -136,6 +145,11 @@ struct ShelfShareView: View {
         // 自然サイズで固定。ImageRendererはこのフレームをそのまま
         // 画像サイズ(scale=2でRetinaのピクセル数)として描く
         .frame(width: width, height: height)
+        // 窓の透明切り欠き(shelfTransparentRegions。例: Record Rackの
+        // 台座両脇)はスナップショットにも同じ形で反映する
+        .clipShape(WindowNotchShape(
+            regions: ShelfPluginRegistry.transparentRegions(
+                resolved: resolvedShelf)))
     }
 }
 

@@ -239,13 +239,19 @@ enum ShelfPlacement {
     /// グリッド座標 point に最も近い空きスロット(スロット中心との
     /// ユークリッド距離。同距離ならindex小さい方=昇順走査で先勝ち)。
     /// 余白ドロップ・最終スロット右半分のドロップ先解決に使う。
-    /// 空きスロットが無ければnil(=満杯として拒否)
-    static func nearestEmptySlot(entries: [MediaEntry], capacity: Int, columns: Int, cell: CGFloat, columnSpacing: CGFloat, rowSpacing: CGFloat, at point: CGPoint) -> Int? {
+    /// 空きスロットが無ければnil(=満杯として拒否)。
+    /// slotOffsetには構造プラグインのコンテンツオフセット
+    /// (見た目の中心=ピッチ中心+オフセット)を渡す。既定はゼロオフセット。
+    /// (CGSize.zeroではなくwidth/heightで書く: テストターゲット側
+    ///  ではCGSize.zeroが解決できない環境があるため)
+    static func nearestEmptySlot(entries: [MediaEntry], capacity: Int, columns: Int, cell: CGFloat, columnSpacing: CGFloat, rowSpacing: CGFloat, at point: CGPoint, slotOffset: (Int) -> CGSize = { _ in CGSize(width: 0, height: 0) }) -> Int? {
         guard capacity > 0, columns > 0 else { return nil }
         let occupied = Set(entries.map(\.slotIndex).filter { $0 >= 0 && $0 < capacity })
         var best: (index: Int, distance2: CGFloat)?
         for i in 0..<capacity where !occupied.contains(i) {
-            let center = slotCenter(index: i, columns: columns, cell: cell, columnSpacing: columnSpacing, rowSpacing: rowSpacing)
+            let o = slotOffset(i)
+            let pitch = slotCenter(index: i, columns: columns, cell: cell, columnSpacing: columnSpacing, rowSpacing: rowSpacing)
+            let center = CGPoint(x: pitch.x + o.width, y: pitch.y + o.height)
             let dx = center.x - point.x
             let dy = center.y - point.y
             let d2 = dx * dx + dy * dy
@@ -254,6 +260,24 @@ enum ShelfPlacement {
             }
         }
         return best?.index
+    }
+
+    /// 上辺のウィンドウ移動用ドラッグ帯(WindowDragGesture)の高さ。
+    /// 既定はtopPaddingだが、構造プラグインのslotContentOffsetで1段目
+    /// (0..<columns)のレコードが上方向(dy < 0)へせり上がる場合は、
+    /// ドラッグ帯がレコード上端へ被ってクリック/D&Dを奪わないよう
+    /// 見た目の上端(topPadding + dy)まで縮める。
+    /// dy >= 0(下方向・オフセット無し)ではtopPaddingのまま維持し、
+    /// 負値は0へクランプする。
+    /// (CGSize.zeroではなくwidth/heightで書く: テストターゲット互換)
+    static func topDragStripHeight(topPadding: CGFloat, columns: Int, slotOffset: (Int) -> CGSize = { _ in CGSize(width: 0, height: 0) }) -> CGFloat {
+        guard topPadding > 0 else { return 0 }
+        guard columns > 0 else { return topPadding }
+        var height = topPadding
+        for c in 0..<columns {
+            height = min(height, topPadding + slotOffset(c).height)
+        }
+        return max(0, height)
     }
 }
 

@@ -36,8 +36,10 @@
 //     同じくshelfFace=設定値、残りは設定rowSpacing/2ずつで一定
 //     (=shelfOffset)
 //   - 外側境界(外枠): max(0, edgePadding−sideFace) /
-//     max(0, topPadding−topFace) /
+//     max(0, topPadding−topFace−depth) /
 //     max(0, bottomPadding−bottomFace−plinthH)
+//     (上辺はdepth>0のときキャビネット上面の帯が先にdepthぶんを
+//      使い、残りが残りになる)
 //
 //  各部材の前面は「配置領域」(縦仕切り=実効columnSpacing、
 //  横棚板=実効rowSpacing、外枠=各辺のpadding)の内側に収める。
@@ -60,13 +62,20 @@
 //     実効行間隔の中央に配置、全幅。同様に残りは設定
 //     rowSpacing/2ずつ
 //   - 外枠: 実効前面幅 = min(設定太さ, 各辺のpadding)、窓端寄せ
-//     (側板は左右窓端、天板は上端、底板は下端寄せで台輪の上)。
-//     inset要求によりpadding=導出値+設定太さなので実効上は
-//     設定太さそのものになり、導出値ぶんの帯が残りとして残る
-//     (下辺は台輪がその帯の一部を使う)
-//   - 台輪: 窓下端に置く張り出しベース。高さ =
-//     min(bottomPadding×0.35, bottomPadding−bottomFace)
-//     (bottomFaceはクランプ後の実効幅)
+//     (側板は左右窓端、天板は上端——ただしdepth>0のときは
+//     上面帯の直下——、底板は下端寄せで台輪の上)。
+//     inset要求によりpadding=導出値+設定太さ(下辺はさらに
+//     +plinthBoost)なので実効上は設定太さそのものになり、
+//     導出値ぶんの帯が残りとして残る(下辺は台輪がその帯の
+//     一部を使う)
+//   - 台輪: 窓下端に置く後退した台座。本体より左右
+//     plinthInsetずつ幅狭(端は角張り)で、両脇の帯は
+//     shelfTransparentRegionsで窓ごと透明に抜く
+//     (デスクトップが透け、台座が床に立つベースに見える)。
+//     高さ = min(bottomPadding×0.35, bottomPadding−bottomFace)
+//     (bottomFaceはクランプ後の実効幅)。下辺insetの
+//     plinthBoostぶんbottomPaddingが増えるのでベースは
+//     そのぶん高くなる(実家具の台座の存在感)
 //
 //  配置領域−前面=残り領域は開口に組み込み、キュービーの内壁
 //  (開口縁から奥へ退がる暗い側面=内壁リング・背板・AOの
@@ -87,6 +96,23 @@
 //
 //  縦仕切り×横棚板の十字部は横部材が覆う: 全高の縦部材系→
 //  全幅の横部材系の順で描く。
+//
+//  奥行き(Depth設定、既定0=表現なし=従来どおり):
+//  depth>0では「少し上から見た箱」の表現を足す。
+//   - 上辺のpadding要求へdepthを追加(shelfPaddingInsetsの辺別
+//     要求)し、最上部[0, depth)にキャビネットの上面を描く
+//     (奥縁=窓上端が暗く、手前縁=天板との境が明るいlit木目)。
+//     天板の前面はそのぶん下へ下がる。開口の残りは
+//     topPadding−topFace−depthなので導出値のまま保持される
+//   - 各開口の下縁へ、下側部材(棚板または底板)の上面=
+//     キュービーの床を深さdepth(上限=開口高の半分)の帯で描く。
+//     左右は内壁幅revealぶん窄め、側壁が床を挟む見え方にする
+//
+//  開口の中でのレコードの位置(slotContentOffsetで宣言し、
+//  ShelfViewがセルへ.offsetとして適用): 水平は開口の中央
+//  (端列は外枠側の残りが大きい分ピッチ位置からずれていたのを
+//  補正)、垂直は開口の下縁=下側部材の上端に底を揃える
+//  (床帯があれば床の上面)。開口・部材の幾何自体は動かない
 //
 //  座標はすべて「padding適用済みグリッドの左上原点」
 //  (=ShelfStructureContextの定義するフレーム)で計算する。
@@ -112,8 +138,9 @@
 //     十字部はこの横部材が縦部材を覆う
 //   - (e) 外枠: 左右側板(窓端寄せ、縦目)→天板(同。全幅で
 //     側板の上に被さる。上端に2-3ptの明るい上面スリバ)→
-//     底板+台輪(台輪は窓端に置きその上に底板を積む。
-//     上端の微かなハイライト+下端を暗く締める)
+//     底板+台輪(台輪は本体より左右へ後退した幅狭の暗い
+//     台座。上端に底板張り出しの落ち影、脇の帯は窓ごと透明に
+//     抜く切り欠き、下端を暗く締める)
 //
 //  オーバーレイは合成側(ShelfView.shelfGrid)が
 //  .allowsHitTesting(false) で重ねるので、再生タップ・D&D・
@@ -154,6 +181,12 @@ struct RackShelfPlugin: ShelfPlugin {
         /// なり、残りは上下の開口へ設定rowSpacing/2ずつ組み込まれる
         /// (minクランプは安全側の残置)
         static let shelfThickness = "rack-shelf-thickness"
+        /// 奥行き(pt)。0=表現なし。>0でキャビネット上面と各
+        /// キュービーの床(下側部材の上面)を描く。この値は
+        /// shelfPaddingInsetsのtop辺への追加要求値でもあり、
+        /// effectivePadding.topがdepthぶん増えて天板の上に
+        /// 専有の帯(上面帯)が確保される
+        static let depth = "rack-depth"
     }
 
     /// デフォルト値
@@ -163,9 +196,13 @@ struct RackShelfPlugin: ShelfPlugin {
     static let defaultFrameThickness: Double = 16
     static let defaultDividerThickness: Double = 8
     static let defaultShelfThickness: Double = 8
+    static let defaultDepth: Double = 0
     /// 内壁幅(pt)。かつてRevealスライダーだったが設定は廃止し、
     /// 内壁リングと開口AOの描画に使う定数として残す
     private static let innerWallWidth: CGFloat = 5
+    /// 木目テクスチャの描画スケール(実験用定数。小さいほど木目が
+    /// 細かい。タイル貼りなので長い部材でもこの縮尺が維持される)
+    private static let woodTextureScale: CGFloat = 0.5
 
     /// 内壁の方向別シェーディング(外側=手前面→内側=奥の黒opacity)。
     /// 天井面は最も暗く、側壁は中間、床面は手前がわずかに明るい
@@ -200,14 +237,45 @@ struct RackShelfPlugin: ShelfPlugin {
     private static let backVignetteBottom: Double = 0.16
     /// 天板上端の上面スリバ(上面が光を拾う表現)
     private static let topSliverOpacity: Double = 0.30
-    /// 台輪(張り出しベース): 高さはbottomPaddingの3.5割と
+    /// 台輪(後退した台座): 高さはbottomPaddingの3.5割と
     /// bottomPadding−底板実効幅(底板の上に残る空き)の小さい方に
-    /// クランプ(枠が太いと台輪が潰れる)。本体より一段暗く、
-    /// 上端に微かなハイライト、下端を暗く締める
+    /// クランプ(枠が太いと台輪が潰れる)。実家具の台座に倣い
+    /// 本体より左右plinthInsetずつ幅狭・端は角張り・全体を
+    /// 影に落とす。両脇の帯[0,inset)はshelfTransparentRegionsで
+    /// 窓ごと透明に抜き(ガラスも壁も描かれずデスクトップが透ける)、
+    /// 台座の上端には底板の張り出しが落とす影を描く
+    /// (後退した台座には光の当たる天面は見えない)
     private static let plinthRatio: CGFloat = 0.35
-    private static let plinthDarken: Double = 0.18
-    private static let plinthTopOpacity: Double = 0.15
-    private static let plinthBottomOpacity: Double = 0.30
+    /// 台輪の高さへの加算量(pt)。shelfPaddingInsetsのbottom
+    /// 要求へ加算して窓ごと下へ広げる: bottomPadding−bottomFace
+    /// が増えて台輪がそのぶん高くなる(実家具の台座の存在感)
+    private static let plinthBoost: CGFloat = 7
+    /// 台輪の左右への後退量=脇の透明切り欠き幅(pt)。
+    /// 窓の角丸半径(macOS 26実測≈14pt)を超える値にして、
+    /// 台座の外端が窓の角丸に食われず角張って見えるようにする
+    /// (inset < 角丸半径だと台座の外下角が窓の角丸で削れて
+    ///  丸く見える)
+    private static let plinthInset: CGFloat = 16
+    /// 台座前面の暗さ(影に沈んだ一段暗い板)
+    private static let plinthDarken: Double = 0.30
+    /// 台座上端の落ち影(手前に張り出した底板が台座の上端へ
+    /// 落とす影)の深さと濃さ
+    private static let plinthTopShadowDepth: CGFloat = 3
+    private static let plinthTopShadowOpacity: Double = 0.5
+    /// 底板の下端につける段差線(底板前面と台座・脇の空きの境目)
+    private static let plinthStepOpacity: Double = 0.15
+    /// 台座前面の下端を締める暗さ(床への落ち影)
+    private static let plinthBottomOpacity: Double = 0.34
+    /// 水平な上面(キュービーの床=部材上面、キャビネット上面)の
+    /// ライティング(depth>0のとき)。上面は前面より光を拾うので
+    /// 手前縁(=部材前面/窓側との境)が最も明るく、奥縁(背板/壁側)
+    /// へ僅かに落ちる。奥縁にはさらに数ptのAOを掛ける
+    private static let topFaceLightFront: Double = 0.15
+    private static let topFaceLightBack: Double = 0.04
+    private static let topFaceAODepth: CGFloat = 6
+    private static let topFaceAOOpacity: Double = 0.28
+    /// キュービーの床の高さの上限(開口高さに対する割合)
+    private static let floorHeightRatio: CGFloat = 0.5
 
     let id = "rack-shelf"
     let displayName = "Record Rack"
@@ -251,6 +319,13 @@ struct RackShelfPlugin: ShelfPlugin {
                 step: 1,
                 defaultValue: Self.defaultShelfThickness
             )),
+            .slider(.init(
+                id: Param.depth,
+                label: "Depth",
+                range: 0...48,
+                step: 1,
+                defaultValue: Self.defaultDepth
+            )),
         ]
     }
 
@@ -265,7 +340,9 @@ struct RackShelfPlugin: ShelfPlugin {
                 guard size.width > 0, size.height > 0, cell > 0 else { return }
                 // 木目テクスチャはループの外で1回だけ解決する
                 // (素材は部材前面と共通のWoodMaterial)
-                let texture = WoodTexture(material: wood, in: gc)
+                let texture = WoodTexture(
+                    material: wood, baseScale: Self.woodTextureScale,
+                    repeats: true, in: gc)
                 if !texture.isAvailable { logMissingTextureOnce(material: wood) }
                 for r in 0..<context.gridRows {
                     for c in 0..<context.gridColumns {
@@ -373,7 +450,9 @@ struct RackShelfPlugin: ShelfPlugin {
         return AnyView(
             Canvas { gc, size in
                 guard size.width > 0, size.height > 0, cell > 0 else { return }
-                let texture = WoodTexture(material: wood, in: gc)
+                let texture = WoodTexture(
+                    material: wood, baseScale: Self.woodTextureScale,
+                    repeats: true, in: gc)
                 if !texture.isAvailable { logMissingTextureOnce(material: wood) }
 
                 // (a) 内壁リング + (b) 開口内側の隙間ラインとAO。
@@ -395,6 +474,15 @@ struct RackShelfPlugin: ShelfPlugin {
                         paintInnerWalls(
                             texture, in: gc, rect: rect,
                             reveal: reveal, seed: slot)
+                        // キュービーの床: 開口の下縁に下側部材
+                        // (棚板/底板)の上面が見える
+                        // (depth>0のときだけ。内壁リングの次、AOの前)
+                        if members.depth > 0 {
+                            paintCubbyFloor(
+                                texture, in: gc, rect: rect,
+                                reveal: reveal,
+                                depth: members.depth, seed: slot)
+                        }
                         paintApertureAO(gc, rect: rect, reveal: reveal)
                     }
                 }
@@ -466,11 +554,25 @@ struct RackShelfPlugin: ShelfPlugin {
                         openingEdges: [.leading])
                 }
                 if context.topPadding > 0 {
-                    // 天板: [0, topFace)=前面(全幅で側板の上に被さる)
+                    // キャビネット上面: depth>0なら最上部[0, depth)
+                    // の帯。床と同じ上面ライティング
+                    // (窓上端=奥縁側が暗く、手前縁が明るい)
+                    if members.depth > 0 {
+                        paintHorizontalTopFace(
+                            texture, in: gc,
+                            rect: CGRect(
+                                x: 0, y: 0,
+                                width: size.width,
+                                height: members.depth),
+                            seed: 299)
+                    }
+                    // 天板: [faceY, faceY+topFace)=前面(全幅で側板の
+                    // 上に被さる。depth>0では上面帯のぶん下へ下がる)
+                    let faceY = members.depth
                     paintMember(
                         texture, in: gc,
                         rect: CGRect(
-                            x: 0, y: 0,
+                            x: 0, y: faceY,
                             width: size.width, height: members.topFace),
                         vertical: false, seed: 300,
                         openingEdges: [.bottom])
@@ -478,7 +580,8 @@ struct RackShelfPlugin: ShelfPlugin {
                     let sliverH = min(3, members.topFace)
                     if sliverH > 0 {
                         let sliver = CGRect(
-                            x: 0, y: 0, width: size.width, height: sliverH)
+                            x: 0, y: faceY,
+                            width: size.width, height: sliverH)
                         gc.fill(
                             Path(sliver),
                             with: .linearGradient(
@@ -506,37 +609,75 @@ struct RackShelfPlugin: ShelfPlugin {
                         vertical: false, seed: 301,
                         openingEdges: [.top])
                     if members.plinthH > 0 {
-                        let plinth = CGRect(
+                        // 台座帯の範囲(全幅)。台座本体は
+                        // [inset, width−inset]に幅狭く後退させる。
+                        // 両脇の帯はshelfTransparentRegionsで窓ごと
+                        // 透明に抜かれるのでここでは何も描かない
+                        let band = CGRect(
                             x: 0, y: size.height - members.plinthH,
                             width: size.width, height: members.plinthH)
-                        texture.paint(
-                            context: gc, path: Path(plinth),
-                            rect: plinth, seed: 302)
-                        // ベースは本体より一段暗い板
-                        gc.fill(
-                            Path(plinth),
-                            with: .color(.black.opacity(Self.plinthDarken)))
-                        // 上端の微かなハイライト(張り出しの天面が
-                        // 光を拾う)+下端を暗く締める(床への落ち影)
-                        gc.fill(
-                            Path(CGRect(
-                                x: 0, y: plinth.minY,
-                                width: size.width, height: 1)),
-                            with: .color(Self.edgeHighlight.opacity(
-                                Self.plinthTopOpacity)))
-                        let footH = min(3, members.plinthH)
-                        let foot = CGRect(
-                            x: 0, y: plinth.maxY - footH,
-                            width: size.width, height: footH)
-                        gc.fill(
-                            Path(foot),
-                            with: .linearGradient(
-                                Gradient(colors: [
-                                    .clear,
-                                    .black.opacity(Self.plinthBottomOpacity),
-                                ]),
-                                startPoint: CGPoint(x: 0, y: foot.minY),
-                                endPoint: CGPoint(x: 0, y: foot.maxY)))
+                        // 台座本体: [inset, width−inset]。端は角張り、
+                        // 影に沈んだ一段暗い板
+                        let plinth = CGRect(
+                            x: Self.plinthInset, y: band.minY,
+                            width: size.width - Self.plinthInset * 2,
+                            height: band.height)
+                        if plinth.width > 0 {
+                            texture.paint(
+                                context: gc, path: Path(plinth),
+                                rect: plinth, seed: 302)
+                            gc.fill(
+                                Path(plinth),
+                                with: .color(.black.opacity(
+                                    Self.plinthDarken)))
+                            // 上端の落ち影(手前に張り出した底板が
+                            // 台座の上端へ落とす影)
+                            let topH = min(
+                                Self.plinthTopShadowDepth, band.height)
+                            let topBand = CGRect(
+                                x: plinth.minX, y: plinth.minY,
+                                width: plinth.width, height: topH)
+                            gc.fill(
+                                Path(topBand),
+                                with: .linearGradient(
+                                    Gradient(colors: [
+                                        .black.opacity(
+                                            Self.plinthTopShadowOpacity),
+                                        .clear,
+                                    ]),
+                                    startPoint: CGPoint(
+                                        x: 0, y: topBand.minY),
+                                    endPoint: CGPoint(
+                                        x: 0, y: topBand.maxY)))
+                            // 下端を暗く締める(床への落ち影)
+                            let footH = min(3, band.height)
+                            let foot = CGRect(
+                                x: plinth.minX,
+                                y: plinth.maxY - footH,
+                                width: plinth.width, height: footH)
+                            gc.fill(
+                                Path(foot),
+                                with: .linearGradient(
+                                    Gradient(colors: [
+                                        .clear,
+                                        .black.opacity(
+                                            Self.plinthBottomOpacity),
+                                    ]),
+                                    startPoint: CGPoint(
+                                        x: 0, y: foot.minY),
+                                    endPoint: CGPoint(
+                                        x: 0, y: foot.maxY)))
+                        }
+                        // 底板の下端の段差線(底板前面とその下の
+                        // 台座・脇の空きの境目。bottomFace=0なら引かない)
+                        if members.bottomFace > 0 {
+                            gc.fill(
+                                Path(CGRect(
+                                    x: 0, y: band.minY - 1,
+                                    width: size.width, height: 1)),
+                                with: .color(.black.opacity(
+                                    Self.plinthStepOpacity)))
+                        }
                     }
                 }
             }
@@ -549,6 +690,16 @@ struct RackShelfPlugin: ShelfPlugin {
 
     // MARK: - (g) 外周余白への追加要求(inset)
 
+    /// (g)の辺別要求。外枠太さは全辺へ均一に、奥行きは上辺にだけ、
+    /// 台輪の嵩上げは下辺にだけ追加する:
+    /// topPaddingへdepthぶんの専有帯を確保してキャビネットの上面を
+    /// その帯に描き(上面帯は開口へ組み込まない=topLeftoverは
+    /// depthぶん少ない)、bottomPaddingへplinthBoostぶんの専有帯を
+    /// 確保して台輪を嵩上げする(plinthBoostはbottomPadding−
+    /// bottomFaceを増やすので台輪高plinthHがそのぶん大きくなる。
+    ///  bottomLeftover=bottomPad−plinthH−bottomFaceは
+    ///  plinthH≤bottomPad−bottomFaceから常に≥0)。
+    /// depth=0ならtopは従来どおりframeThicknessの要求と同じ結果。
     /// 外枠の実効前面幅は各辺のpaddingにクランプされる
     /// (resolvedMembers参照)。paddingの導出値
     /// (edge=columnSpacing、top=max(4,rowSpacing)、bottom=rowSpacing)
@@ -561,9 +712,17 @@ struct RackShelfPlugin: ShelfPlugin {
     /// ので開口の残り=奥行き感は枠の太さに依らない)。
     /// 縦仕切り/横棚板はレコード間隔のクランプなのでこちらではなく
     /// shelfSpacingInsetで要求する
-    func shelfPaddingInset(values: [String: PluginParameterValue]) -> CGFloat {
-        max(0, CGFloat(values[Param.frameThickness]?.number
+    func shelfPaddingInsets(
+        values: [String: PluginParameterValue]
+    ) -> (edge: CGFloat, top: CGFloat, bottom: CGFloat) {
+        let frame = max(0, CGFloat(values[Param.frameThickness]?.number
             ?? Self.defaultFrameThickness))
+        let depth = max(0, CGFloat(values[Param.depth]?.number
+            ?? Self.defaultDepth))
+        return (
+            edge: frame,
+            top: frame + depth,
+            bottom: frame + Self.plinthBoost)
     }
 
     // MARK: - (h) レコード間隔への追加要求(spacing inset)
@@ -597,11 +756,74 @@ struct RackShelfPlugin: ShelfPlugin {
         )
     }
 
+    // MARK: - (i) スロットごとのレコードオフセット
+
+    /// 開口の中央・床の上へレコードを置くためのピッチ位置
+    /// (セルrect)からの平行移動量(「少し上から見た箱」で
+    /// レコードが宙に浮かない見え方)。
+    /// - 水平: 開口の中央へ。内部列は残りが左右対称(どちらも
+    ///   dividerOffset)なので0。端列は外枠側の残り(sideLeftover)
+    ///   が大きい分だけピッチ位置からずれていたのを、開口に対して
+    ///   中央へ補正する
+    /// - 垂直: 開口の下縁(=下側部材の前面の上端)に底を揃える。
+    ///   depth>0で床帯があるときは床の上面(aperture.maxY−床高)
+    ///   に乗せる。床の高さはpaintCubbyFloorと同じ
+    ///   cubbyFloorHeightを使い、depth=0なら床高0=部材前面の
+    ///   上端に着地する
+    func slotContentOffset(
+        slot: Int, context: ShelfStructureContext
+    ) -> CGSize {
+        let members = resolvedMembers(context: context)
+        let r = slot / context.gridColumns
+        let c = slot % context.gridColumns
+        let cell = slotRect(column: c, row: r, context: context)
+        let aperture = apertureRect(
+            column: c, row: r, context: context, members: members)
+        let floorH = Self.cubbyFloorHeight(
+            apertureHeight: aperture.height, depth: members.depth)
+        // 床が下側の残りより深い(depth>0かつrowSpacing小)と
+        // 床面への着地がレコードを持ち上げ、上端が開口の上縁を
+        // 越えて上の部材へめり込みうる。開口の中で持ち上がる
+        // 分は許容するが、上縁より上へは出さないようクランプする
+        let dy = max(
+            (aperture.maxY - floorH) - cell.maxY,
+            aperture.minY - cell.minY)
+        return CGSize(
+            width: aperture.midX - cell.midX,
+            height: dy)
+    }
+
+    // MARK: - (j) 窓の透明領域
+
+    /// 後退した台座の両脇の空き[0,plinthInset)×台座帯を透明で抜く
+    /// (台座帯と同じ高さ・窓の下端まで)。ガラスも壁も描かれず
+    /// デスクトップが透け、台座が床に立つベースとして見える。
+    /// 幅plinthInsetは窓の角丸半径より大きいので、角丸はすべて
+    /// 透明領域の中に収まり、台座の外端は角張ったまま見える
+    func shelfTransparentRegions(
+        context: ShelfStructureContext
+    ) -> [CGRect] {
+        let members = resolvedMembers(context: context)
+        guard members.plinthH > 0 else { return [] }
+        let size = frameSize(context: context)
+        let y = size.height - members.plinthH
+        return [
+            CGRect(
+                x: 0, y: y,
+                width: Self.plinthInset, height: members.plinthH),
+            CGRect(
+                x: size.width - Self.plinthInset, y: y,
+                width: Self.plinthInset, height: members.plinthH),
+        ]
+    }
+
     // MARK: - 描画パーツ
 
     /// スロット(c, r)の矩形(padding適用済みフレーム座標)。
-    /// ジャケットが表示される領域で、キュービー開口(aperture)は
-    /// これを各辺の残り分だけ外側へ広げたもの(apertureRect参照)
+    /// ジャケットが表示される領域の**ピッチ位置**(見た目の位置は
+    /// slotContentOffsetで開口の中央・床の上へずれる)で、
+    /// キュービー開口(aperture)はこれを各辺の残り分だけ
+    /// 外側へ広げたもの(apertureRect参照)
     private func slotRect(
         column c: Int, row r: Int, context: ShelfStructureContext
     ) -> CGRect {
@@ -611,6 +833,19 @@ struct RackShelfPlugin: ShelfPlugin {
             y: context.topPadding
                 + CGFloat(r) * (context.cellSize + context.rowSpacing),
             width: context.cellSize, height: context.cellSize)
+    }
+
+    /// padding適用済みフレームの全体サイズ(=窓コンテンツの大きさ)。
+    /// 余白+セル+間隔から組み立てる(shelfTransparentRegionsなど、
+    /// Canvasのsizeが手元に無いフック用)
+    private func frameSize(context: ShelfStructureContext) -> CGSize {
+        CGSize(
+            width: context.edgePadding * 2
+                + CGFloat(context.gridColumns) * context.cellSize
+                + CGFloat(context.gridColumns - 1) * context.columnSpacing,
+            height: context.topPadding + context.bottomPadding
+                + CGFloat(context.gridRows) * context.cellSize
+                + CGFloat(context.gridRows - 1) * context.rowSpacing)
     }
 
     /// スロット(c, r)のキュービー開口(aperture)の矩形。
@@ -676,9 +911,19 @@ struct RackShelfPlugin: ShelfPlugin {
         /// bottomPaddingも同じくeffectivePaddingなので通常は設定値そのもの
         let bottomFace: CGFloat
         /// 台輪の高さ = min(bottomPadding×plinthRatio,
-        /// bottomPadding−bottomFace)。底板の下(窓端)に置く張り出し
-        /// ベースで、枠が太いと潰れる(bottomFace=bottomPaddingなら0)
+        /// bottomPadding−bottomFace)。底板の下(窓端)に置く後退した
+        /// 台座(本体より左右plinthInsetずつ幅狭)で、枠が太いと
+        /// 潰れる(bottomFace=bottomPaddingなら0)。
+        /// 下辺insetのplinthBoostぶんbottomPaddingが増えているので
+        /// 通常はそのぶん高い台座になる
         let plinthH: CGFloat
+        /// 奥行きの実効高さ = min(設定値, topPadding−topFace)。
+        /// depth>0なら最上部[0, depth)にキャビネット上面の帯を
+        /// 描き、天板の前面はそのぶん下へ下がる。上辺の辺別inset
+        /// 要求(shelfPaddingInsets)がtopPaddingへ設定値ぶんを
+        /// 確保するので通常は設定値そのものになる
+        /// (クランプは安全側の残置)
+        let depth: CGFloat
         /// 縦仕切り前面の実効列間隔内オフセット(中央配置) =
         /// (実効columnSpacing−dividerFace)/2。左右それぞれの開口へ
         /// 組み込まれる残りでもある。spacing insetにより通常は
@@ -694,7 +939,8 @@ struct RackShelfPlugin: ShelfPlugin {
         /// edgePadding−sideFace
         let sideLeftover: CGFloat
         /// 天板の下〜最上段開口へ組み込まれる残り =
-        /// topPadding−topFace
+        /// topPadding−topFace−depth
+        /// (上面帯がdepthぶんを使う。depth=0なら従来どおり)
         let topLeftover: CGFloat
         /// 底板の上〜最下段開口へ組み込まれる残り =
         /// bottomPadding−plinthH−bottomFace
@@ -782,6 +1028,78 @@ struct RackShelfPlugin: ShelfPlugin {
                 ]),
                 startPoint: CGPoint(x: trailing.maxX, y: 0),
                 endPoint: CGPoint(x: trailing.minX, y: 0)))
+    }
+
+    /// 上から見える水平面の共通描画。キュービーの床=部材上面・
+    /// キャビネット上面の両方に使う(どちらもdepth>0のとき)。
+    /// 同じ木目(横目=部材に沿う向き)を貼り、上面らしい
+    /// ライティングを掛ける: 手前縁(=rect.maxY側、部材前面との
+    /// 境)が最も明るい暖かい白の縦グラデ、奥縁(=rect.minY側、
+    /// 背板/壁との境)へ数ptのAO、手前縁に1ptの稜ハイライト
+    private func paintHorizontalTopFace(
+        _ texture: WoodTexture, in gc: GraphicsContext,
+        rect: CGRect, seed: Double
+    ) {
+        guard rect.width > 0, rect.height > 0 else { return }
+        texture.paint(
+            context: gc, path: Path(rect), rect: rect, seed: seed)
+        gc.fill(
+            Path(rect),
+            with: .linearGradient(
+                Gradient(colors: [
+                    Self.edgeHighlight.opacity(Self.topFaceLightFront),
+                    Self.edgeHighlight.opacity(Self.topFaceLightBack),
+                ]),
+                startPoint: CGPoint(x: 0, y: rect.maxY),
+                endPoint: CGPoint(x: 0, y: rect.minY)))
+        // 奥縁のAO(背板/壁との境の落ち影)
+        let ao = CGRect(
+            x: rect.minX, y: rect.minY,
+            width: rect.width,
+            height: min(Self.topFaceAODepth, rect.height))
+        gc.fill(
+            Path(ao),
+            with: .linearGradient(
+                Gradient(colors: [
+                    .black.opacity(Self.topFaceAOOpacity), .clear,
+                ]),
+                startPoint: CGPoint(x: 0, y: ao.minY),
+                endPoint: CGPoint(x: 0, y: ao.maxY)))
+        // 手前縁の1ptハイライト(部材前面との境の稜が光を拾う)
+        gc.fill(
+            Path(CGRect(
+                x: rect.minX, y: rect.maxY - 1,
+                width: rect.width, height: 1)),
+            with: .color(Self.edgeHighlight.opacity(
+                Self.edgeHighlightOpacity)))
+    }
+
+    /// キュービーの床: 開口の下縁に、下側部材(棚板/底板)の上面を
+    /// 深さdepthの帯で描く(上限=開口高の半分)。左右は内壁幅
+    /// revealぶん窄めて、床が両側壁に挟まれた見え方にする
+    /// キュービーの床の実効高さ = min(depth, 開口高×floorHeightRatio)。
+    /// 床の描画(paintCubbyFloor)とレコードの底位置の決定
+    /// (slotContentOffset)で同じ値を使うよう切り出した共有部品
+    private static func cubbyFloorHeight(
+        apertureHeight: CGFloat, depth: CGFloat
+    ) -> CGFloat {
+        min(depth, apertureHeight * Self.floorHeightRatio)
+    }
+
+    private func paintCubbyFloor(
+        _ texture: WoodTexture, in gc: GraphicsContext,
+        rect: CGRect, reveal: CGFloat, depth: CGFloat, seed: Double
+    ) {
+        let floorH = Self.cubbyFloorHeight(
+            apertureHeight: rect.height, depth: depth)
+        let inset = min(reveal, rect.width / 2)
+        guard floorH > 0, rect.width > inset * 2 else { return }
+        paintHorizontalTopFace(
+            texture, in: gc,
+            rect: CGRect(
+                x: rect.minX + inset, y: rect.maxY - floorH,
+                width: rect.width - inset * 2, height: floorH),
+            seed: seed)
     }
 
     /// (b) 開口(aperture)の内側稜: 内壁リングの内側(背板/LPとの
@@ -1019,6 +1337,8 @@ struct RackShelfPlugin: ShelfPlugin {
             Param.dividerThickness, default: Self.defaultDividerThickness)))
         let shelfRaw = max(0, CGFloat(context.number(
             Param.shelfThickness, default: Self.defaultShelfThickness)))
+        let depthRaw = max(0, CGFloat(context.number(
+            Param.depth, default: Self.defaultDepth)))
         let colGap = max(0, context.columnSpacing)
         let rowGap = max(0, context.rowSpacing)
         let edgePad = max(0, context.edgePadding)
@@ -1038,6 +1358,11 @@ struct RackShelfPlugin: ShelfPlugin {
         let plinthH = max(0, min(
             bottomPad * Self.plinthRatio,
             bottomPad - bottomFace))
+        // 奥行き: 天板前面より上の帯[0, depth)にキャビネット上面
+        // を描く幅。辺別insetでtopPaddingへ設定値ぶんが確保されて
+        // いるので通常は設定値そのもの(残りtopLeftoverからは
+        // 差し引く=上面帯は開口へ組み込まない)
+        let depth = min(depthRaw, max(0, topPad - topFace))
         return MemberLayout(
             frameRaw: frameRaw,
             dividerRaw: dividerRaw,
@@ -1048,10 +1373,11 @@ struct RackShelfPlugin: ShelfPlugin {
             topFace: topFace,
             bottomFace: bottomFace,
             plinthH: plinthH,
+            depth: depth,
             dividerOffset: (colGap - dividerFace) / 2,
             shelfOffset: (rowGap - shelfFace) / 2,
             sideLeftover: edgePad - sideFace,
-            topLeftover: topPad - topFace,
+            topLeftover: max(0, topPad - topFace - depth),
             bottomLeftover: bottomPad - plinthH - bottomFace)
     }
 
@@ -1074,6 +1400,6 @@ struct RackShelfPlugin: ShelfPlugin {
     ) {
         guard !Self.didLogApplied else { return }
         Self.didLogApplied = true
-        Self.logger.notice("rack-shelf applied: wood=\(wood.rawValue, privacy: .public) frame=\(members.frameRaw, privacy: .public)->face:\(members.sideFace, privacy: .public)/\(members.topFace, privacy: .public)/\(members.bottomFace, privacy: .public) leftover:\(members.sideLeftover, privacy: .public)/\(members.topLeftover, privacy: .public)/\(members.bottomLeftover, privacy: .public) plinth:\(members.plinthH, privacy: .public) divider=\(members.dividerRaw, privacy: .public)->face:\(members.dividerFace, privacy: .public) leftover:\(members.dividerOffset, privacy: .public) shelf=\(members.shelfRaw, privacy: .public)->face:\(members.shelfFace, privacy: .public) leftover:\(members.shelfOffset, privacy: .public) reveal=\(reveal, privacy: .public) columns=\(columns, privacy: .public) rows=\(rows, privacy: .public)")
+        Self.logger.notice("rack-shelf applied: wood=\(wood.rawValue, privacy: .public) frame=\(members.frameRaw, privacy: .public)->face:\(members.sideFace, privacy: .public)/\(members.topFace, privacy: .public)/\(members.bottomFace, privacy: .public) leftover:\(members.sideLeftover, privacy: .public)/\(members.topLeftover, privacy: .public)/\(members.bottomLeftover, privacy: .public) plinth:\(members.plinthH, privacy: .public) divider=\(members.dividerRaw, privacy: .public)->face:\(members.dividerFace, privacy: .public) leftover:\(members.dividerOffset, privacy: .public) shelf=\(members.shelfRaw, privacy: .public)->face:\(members.shelfFace, privacy: .public) leftover:\(members.shelfOffset, privacy: .public) reveal=\(reveal, privacy: .public) depth=\(members.depth, privacy: .public) columns=\(columns, privacy: .public) rows=\(rows, privacy: .public)")
     }
 }

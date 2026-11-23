@@ -109,7 +109,8 @@ pkill -x Sleeves; open .build/Build/Products/Debug/Sleeves.app
   場合だけalbums.jsonへ即座に保存する。entries配列は常にslotIndex昇順。
   スロット計算の純ロジックは `Shared/MediaEntry.swift` の
   `enum ShelfPlacement`(normalized/paddedSlots/firstEmptySlot/place/
-  reorder/insertionShift/slotCenter/nearestEmptySlot)に集約し、
+  reorder/insertionShift/slotCenter/nearestEmptySlot/
+  topDragStripHeight)に集約し、
   SleevesTestsから直接テストしている。
   - slotIndex >= capacityのエントリは登録を保持したまま非表示
     (「縮小しても登録は消さない」セマンティクス。グリッドを広げれば
@@ -259,7 +260,7 @@ pkill -x Sleeves; open .build/Build/Products/Debug/Sleeves.app
   スライダーでtransient更新+400msデバウンスで永続化する。
   余白は `ShelfSettings` の計算プロパティ: `edgePadding`(左右)
   =`columnSpacing`、`topPadding`(上端)=`max(4, rowSpacing)`
-  (4pt下限は下のWindowDragGesture帯確保のため)、
+  (4pt下限は下のWindowDragStrip帯確保のため)、
   `bottomPadding`(下端)=`rowSpacing`(上端と違い下限なし。
   rowSpacing=0では最終行の棚板が0へクランプされるだけ)。
   旧settings.jsonに
@@ -281,10 +282,18 @@ pkill -x Sleeves; open .build/Build/Products/Debug/Sleeves.app
   ジャケット上の帯でもSwiftUIのホスティングビューが返る)。信号ボタン上は
   `_NSThemeCloseWidget` 等が返るのでボタンも押せる
 - コンテンツが上端まで来るとAppKitのタイトルバードラッグ領域が無くなるため、
-  上辺の余白(`settings.topPadding`)に `WindowDragGesture` を置いて
-  ウィンドウ移動を確保している。topPaddingは `max(4, rowSpacing)` の
-  導出値で、4pt下限はこのストリップを残すため(rowSpacing=0でも
-  ウィンドウを動かせる)
+  上辺の余白にAppKitベースの `WindowDragStrip`(`Sleeves/WindowGlass.swift`)を
+  置いて `NSWindow.performDrag(with:)` でウィンドウ移動を確保している
+  (SwiftUIの `WindowDragGesture` は複数シェルフ時に上部ドラッグが効かなくなる
+  ため置換)。`acceptsFirstMouse = true` で非アクティブ窓からでも1回目の
+  クリック&ドラッグで移動でき、右上ツールバー表示中の矩形(`excludedRect`。
+  `ShelfView.toolbarTopLeftRect` を `isOverChrome` と共有)と可視の標準信号ボタン
+  は `hitTest` で `nil` を返して操作を奪わない(Ctrl+クリックもドラッグせず
+  フォールバック)。topPaddingは `max(4, rowSpacing)` の導出値(4pt下限は
+  rowSpacing=0でも帯を残すため、構造プラグインのinsetが加算される)だが、
+  帯の高さは `ShelfPlacement.topDragStripHeight` で算出し、1段目レコードが
+  `slotContentOffset` で上方向(`dy < 0`)へせり上がる場合はレコード上端と
+  重ならない高さまで縮める(0ならオーバーレイ自体を省く)
 - `slotScreenCenter` のグリッド→画面座標変換からタイトルバー帯の控除は不要
   (グリッド上端=ウィンドウ上端)
 
@@ -369,7 +378,17 @@ pkill -x Sleeves; open .build/Build/Products/Debug/Sleeves.app
   `onWindowReady`/`onBecameKey`コールバックで取得
 - **フォーカス中シェルフの追跡**: WindowConfiguratorのdidBecomeKey通知で
   `ShelfManager.focusedStore`を更新。設定画面(SettingsView)はこれを編集する
-  (=「設定はフォーカスしているウィンドウで有効」)
+  (=「設定はフォーカスしているウィンドウで有効」)。なお `ShelfView` は
+  `ShelfManager.shared` を `@ObservedObject` で監視せず(フォーカス切替の
+  たびに全シェルフの `body` が再評価されるのを避けるため)、
+  `ShelfManager.shared.$shelfIDs` だけを `.onReceive` で購読して
+  `Delete Shelf…` の有効/無効(`canDeleteShelf`)を更新する
+- **閉じたウィンドウのモニタ再登録防止**: `WindowConfigurator.View` は
+  `NSWindow.willCloseNotification` で `isClosing = true` を立て(新しい非nil
+  ウィンドウへのアタッチで `false` に戻す)、`updateNSView` で `guard !view.isClosing`
+  として `refreshChrome()` と `onWindowReady` を遮断する(クローズ後に走った
+  `updateNSView` が `monitorsByWindow` へイベントモニタを再登録してリークする
+  不具合の防止)
 - **タイトルバー下のセパレータ線は`.windowStyle(.hiddenTitleBar)`で消す**
   (macOS 26実測): styleMaskに.fullSizeContentViewを挿入しても
   contentLayoutRectがタイトルバー帯を含まず(contentLayout={{0,0},{W,H-32}})、
@@ -452,7 +471,7 @@ resolve/resolveShelfでもsettingsのenabledフラグを無視する。
 ShelfSettingsのデコード時にwallのstaleなenabled=falseはtrueへ
 正規化される(pluginSummaryが"off"と誤報しないため)。
 
-フックは6種(デフォルト全てno-op、必要なものだけオーバーライド)。
+フックは10種(デフォルト全てno-op、必要なものだけオーバーライド)。
 (a)〜(d)はセル単位で`applyingJacketPlugins`/`applyingCellPlugins`
 が合成し、(e)(f)はグリッド単位でresolveShelfが解決してShelfViewの
 grid .background/.overlayへ重畳する。(a)〜(c)内での合成順は
@@ -476,13 +495,52 @@ grid .background/.overlayへ重畳する。(a)〜(c)内での合成順は
 - (f) `shelfOverlay` — グリッド前面への描画(StoreShelfPluginの
   棚板+前柵、LedgeShelfPluginのレッジ)。gridの.overlayに
   レジストリ順で重畳。合成側が.allowsHitTesting(false)を掛ける
+- (i) `slotContentOffset` — スロットごとのレコードオフセット。
+  構造プラグインが開口内でのレコード位置をピッチ位置からの
+  平行移動量で宣言する(既定.zero=ピッチ位置。RackShelfPluginは
+  開口の中央・床の上へずらす)。ShelfViewはセルへ.offsetで
+  適用し、ShelfShareViewも同じオフセットを掛ける(グリッドの
+  ピッチ・余白・ウィンドウサイズは変わらない)。
+  **レコードの見た目の位置を読む側(ヒット判定・ドロップゾーン
+  座標・ゴースト着地・最近傍空きスロット)はピッチ位置(slotRect)
+  ではなくオフセット済みの矩形(ShelfView.slotVisualRect)を
+  使うこと** — ずれたレコード上の右クリック/ドロップが別
+  スロットや余白扱いになる。また上辺のウィンドウ移動ドラッグ帯も
+  `ShelfPlacement.topDragStripHeight` に1段目のオフセットを渡し、
+  `dy < 0` で上へせり上がった1段目レコードと重ならないよう縮める。
+  複数スロットへ読む経路では
+  settings経路の再解決を避け、1回解決した
+  `[ResolvedShelfStructure]`をslotContentOffset(slot:resolved:)
+  へ渡す(resolveShelf数百回/マウス移動を防ぐ)
+- (j) `shelfTransparentRegions` — 窓コンテンツを透明で抜く矩形群
+  (既定[]=抜きなし)。構造プラグインが「キャビネットの
+  シルエットに含めない領域」を宣言するフック。ShelfViewは
+  グリッド(フレーム直後・オーバーレイ群の手前)とガラス背景の
+  両方へ`WindowNotchShape`(全域−矩形を矩形和で構成するShape)
+  のclipShapeを掛け、抜けた領域はガラスも含めて描かれず
+  デスクトップがそのまま透ける。**切り欠き内部はSwiftUIの
+  ヒット判定も無くなる**(ので操作に必要な領域は宣言しては
+  いけない)。clamped(ScrollView化)時はコンテンツ
+  座標がスクロール分ずれるため切り欠きは無効化する。
+  ShelfShareView(静的画像)も同じclipShapeで揃える。
+  レジストリ集約は`ShelfPluginRegistry.transparentRegions(resolved:)`
+  ※過去にmask/clipShape/destinationOutを試して「操作が全滅」
+    と報告されたが、真因は切り欠きではなくWindowDragGestureの
+    複数シェルフ時の不具合だった(HEADでも再現。WindowDragStrip
+    化で解決済み)。clipShape適用をフレーム直後・オーバーレイ手前
+    にしているのは、ドラッグ帯/ツールバー/ドロップ受けの判定を
+    温存するため
 
 合成系フックのほか、棚レベルの外周余白への追加要求フック
 `shelfPaddingInset(values:)` がある(既定0=要求なし)。構造
 プラグインが「この太さの部材を、間隔由来の余白とは別に外周へ
 専有の帯として確保したい」と宣言するもので、RackShelfPluginは
-frameThicknessを返す。要求値は**加算**: レジストリは有効
-プラグインの要求の最大値を `resolvePaddingInset` で解決し、
+frameThicknessを返す。辺別要求が必要な場合は
+`shelfPaddingInsets(values:)`(辺別タプル版。既定は
+shelfPaddingInsetの値を全辺へ展開)をオーバーライドする —
+RackShelfPluginは上辺へdepthを追加要求する(キャビネット上面の帯)。
+要求値は**加算**: レジストリは有効
+プラグインの要求の辺ごとの最大値を `resolvePaddingInset` で解決し、
 `effectivePadding(settings:)` が各辺で 導出値+inset を返す
 (=グリッドがinset分だけ広がるだけでレコード位置は不変。
 導出値は常に保持されるので、導出値を配置領域に使う部材の
@@ -555,9 +613,10 @@ jacketShape(cellIndex:)。実物のLPジャケットは角ごとにわずかに�
   lipでジャケット下端へ前唇を重ねる(=レコードがレッジに載る見え方)、
   variationでスロットごとの中心ずれ/傾きをsinハッシュで付与。
   木目はwoodパラメータ(pine/oak/walnut/mahogany/black)ごとの
-  Assets.xcassetsの`wood-*`画像を等倍で貼り(WoodTexture.paint。
-  テクスチャより大きい面だけaspect-fillで拡大)、切り出し位置を
-  seedのsinハッシュでずらす(画像の端をrect端より外にはみ出す
+  Assets.xcassetsの`wood-*`画像をbaseScale(既定1=等倍)で貼り
+  (WoodTexture.paint。テクスチャより大きい面は、repeats=trueなら
+  baseScaleのままタイル状に繰り返し、falseならaspect-fillで拡大)、
+  切り出し位置をseedのsinハッシュでずらす(画像の端をrect端より外にはみ出す
   形でずらさないと未描画領域が残る)。アセット欠落時は縦グラデに退く。
   **素材と描画はStoreShelfPluginの棚板(board)と共通**:
   `Sleeves/Plugins/Shelf/WoodMaterial.swift`の`WoodMaterial`
@@ -571,10 +630,29 @@ jacketShape(cellIndex:)。実物のLPジャケットは角ごとにわずかに�
   部材前面は配置領域(外枠=各辺padding、縦仕切り=columnSpacing、
   横棚板=rowSpacing)にクランプし、残りは開口へ組み込む
   (開口同士の距離=部材の太さ)。パラメータ: wood/frameThickness/
-  dividerThickness/shelfThickness。**外枠は
-  shelfPaddingInset、縦仕切り・横棚板はshelfSpacingInsetで
+  dividerThickness/shelfThickness/depth。**外枠は
+  shelfPaddingInset(上辺の奥行き・下辺の台輪嵩上げぶんは
+  辺別のshelfPaddingInsets)、縦仕切り・横棚板はshelfSpacingInsetで
   専用の余白/ピッチを加算要求する**(上のinset項参照)ので、
-  各ThicknessはSpacing系スライダーと独立に設定値どおり描ける
+  各ThicknessはSpacing系スライダーと独立に設定値どおり描ける。
+  depth>0では最上部[0, depth)にキャビネット上面、各開口の
+  下縁に下側部材の上面=キュービーの床を描く(depth=0は
+  従来どおり。床/上面は「上から見える水平面」の共通
+  ライティング=手前縁が明るく奥縁へAO)。台輪は窓下端の
+  後退した台座: 本体より左右plinthInset(定数=16。窓の角丸
+  半径≈14ptを超える値でないと台座の外下角が窓の角丸に
+  食われて丸く見える)ずつ幅狭で端は角張り、脇の帯は
+  shelfTransparentRegions(フックj)でガラスも含めて窓ごと
+  透明に抜き、デスクトップが透ける=台座が床に立つベースに
+  見える(脇の帯を暗い影で塗り潰す版は「台座の背後に不要な
+  部分が見える」と却下された)。bottom insetにplinthBoost
+  (定数)を加算して嵩上げし、台座の上端には底板張り出しの
+  落ち影、底板下端に段差線、下端を暗く締める(本体を窓端から
+  内側へ寄せる幅広張り出しや、前面に張り出す天面ledgeの
+  光る表現は正面図では読めず却下された)。
+  木目はWoodTextureをbaseScale=0.5+repeats=trueでタイル貼り
+  (woodTextureScale定数で調整。部材がテクスチャより長い
+  場合は拡大せずタイルで繰り返す)
 - **新しいスタイルの追加手順**: ShelfStyleにcaseを足し、
   `shelfStyle`を返す構造プラグインを作ってレジストリへ登録するだけで
   ピッカー・フィルタ・resolveまで全部通る

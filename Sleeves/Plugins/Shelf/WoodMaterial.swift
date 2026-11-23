@@ -11,8 +11,10 @@
 //
 //  WoodTexture: Canvas内で木目を描くヘルパー。プラグインの
 //  Canvasクロージャ先頭で1回だけ作り、描く要素すべてで使い回す。
-//   - 等倍で貼る(実物の板と同じ物理スケール)。rectがテクスチャ
-//     より大きい場合だけaspect-fillで拡大する(長い棚板が
+//   - baseScale(既定1=等倍=実物の板と同じ物理スケール)で貼る。
+//     1より小さくすると木目が細かくなる。rectが縮尺後テクスチャ
+//     より大きい場合: repeatsなら拡大せずタイル状に並べて覆い、
+//     そうでなければaspect-fillで拡大する(長い棚板が
 //     テクスチャ幅を超えるケース)
 //   - 切り出し位置はseed(スロットindexや行番号)のsinハッシュで
 //     決定論的にずらし、1枚ごとに別の板から切った見え方にする
@@ -95,10 +97,20 @@ enum WoodMaterial: String, CaseIterable, PluginOption {
 struct WoodTexture {
     private let image: GraphicsContext.ResolvedImage?
     private let material: WoodMaterial
+    /// 基準スケール。1=等倍、0.5なら半分の大きさで貼り
+    /// 木目が細かく見える(実験用)
+    private let baseScale: CGFloat
+    /// trueならrectがbaseScale縮尺の画像を超える次元があるとき、
+    /// 画像を拡大せずタイル状に並べて覆う(細かい木目のまま
+    /// 長い部材を埋める用)
+    private let repeats: Bool
 
     /// Canvasクロージャの先頭で1回だけ作る
-    init(material: WoodMaterial, in context: GraphicsContext) {
+    init(material: WoodMaterial, baseScale: CGFloat = 1,
+         repeats: Bool = false, in context: GraphicsContext) {
         self.material = material
+        self.baseScale = baseScale
+        self.repeats = repeats
         let resolved = context.resolve(Image(material.assetName))
         image = (resolved.size.width > 0 && resolved.size.height > 0)
             ? resolved : nil
@@ -120,9 +132,35 @@ struct WoodTexture {
         }
         var g = context
         g.clip(to: path)
-        // 等倍。rectがテクスチャより大きい次元がある場合だけ
-        // aspect-fillで拡大(長い棚板がテクスチャ幅を超えるケース)
-        let s = max(1,
+        // タイルモード: rectがbaseScale縮尺のタイルを超える次元が
+        // あるとき、拡大せずbaseScaleのまま並べてrectを覆う
+        // (部材がテクスチャより長い場合に木目を細かく保つ。
+        //  rectがタイルに収まるときは下の1枚貼りに流れる)
+        let tw = image.size.width * baseScale
+        let th = image.size.height * baseScale
+        if repeats, tw > 0, th > 0,
+           rect.width > tw || rect.height > th {
+            // タイル格子の位相をhash01でずらし、板ごとに継ぎ目
+            // 位置が違う見え方にする(周期パターンなのでずらし
+            // 範囲は[0,タイル)の1周期ぶんで十分)
+            let offX = Self.hash01(seed, salt: 3.7) * tw
+            let offY = Self.hash01(seed, salt: 7.9) * th
+            var y = rect.minY - offY
+            while y < rect.maxY {
+                var x = rect.minX - offX
+                while x < rect.maxX {
+                    g.draw(image, in: CGRect(
+                        x: x, y: y, width: tw, height: th))
+                    x += tw
+                }
+                y += th
+            }
+            return
+        }
+        // 基準はbaseScale(既定1=等倍)。rectが縮尺後テクスチャより
+        // 大きい次元がある場合だけaspect-fillで拡大
+        // (長い棚板がテクスチャ幅を超えるケース)
+        let s = max(baseScale,
             rect.width / image.size.width,
             rect.height / image.size.height)
         let w = image.size.width * s
