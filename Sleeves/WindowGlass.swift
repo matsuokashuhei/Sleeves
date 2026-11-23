@@ -248,6 +248,11 @@ struct WindowConfigurator: NSViewRepresentable {
             window.titlebarAppearsTransparent = true
             window.titleVisibility = .hidden
             window.titlebarSeparatorStyle = .none
+            // ドロップシャドウを切る。切り欠き(台座両脇の透明部分)で
+            // 壁紙が透けると、影のハローが窓の縁を強調して
+            // 「枠線」として目立つため(システムの枠線自体は残るが
+            // 影が無いぶん縁の主張が弱まる)
+            window.hasShadow = false
             logger.notice("glass window configured: transparent + hidden title + fullSizeContentView + no separator")
         }
     }
