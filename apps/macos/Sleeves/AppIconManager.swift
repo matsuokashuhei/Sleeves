@@ -38,7 +38,7 @@ enum AppIconManager {
     enum AppIconPreset: String, CaseIterable, Identifiable {
         /// バンドルの通常アイコン(nil代入で復帰させる)
         case `default`
-        /// レコードジャケットのアイコン(record-icons/record-N.png)
+        /// レコードジャケットのアイコン(assets/icons/record-N.png)
         case sunburst
         case prism
         case waves

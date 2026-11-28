@@ -939,10 +939,10 @@ struct AppIconImageProcessorTests {
 #if DEBUG
 struct ShowcaseCatalogTests {
 
-    @Test func defaultDirectoryResolvesRepoDocsMaterialsAndLoadsSortedImages() {
+    @Test func defaultDirectoryResolvesRepoAssetsShowcaseAndLoadsSortedImages() {
         let dir = ShowcaseCatalog.defaultMaterialsDirectory()
-        #expect(dir.lastPathComponent == "materials")
-        #expect(dir.deletingLastPathComponent().lastPathComponent == "Docs")
+        #expect(dir.lastPathComponent == "showcase")
+        #expect(dir.deletingLastPathComponent().lastPathComponent == "assets")
 
         let entries = ShowcaseCatalog.loadEntries(from: dir)
         #expect(entries.count == 18)

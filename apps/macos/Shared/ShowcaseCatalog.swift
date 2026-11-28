@@ -28,19 +28,21 @@ enum ShowcaseCatalog {
         id.hasPrefix(entryIDPrefix)
     }
 
-    /// リポジトリルート直下の `Docs/materials` を `#filePath` から解決する。
-    /// このファイルは `<repo>/Shared/ShowcaseCatalog.swift` に配置されているため、
-    /// 2階層上がリポジトリルートになる。
+    /// リポジトリルート直下の `assets/showcase` を `#filePath` から解決する。
+    /// このファイルは `<repo>/apps/macos/Shared/ShowcaseCatalog.swift` に配置されているため、
+    /// 4階層上がリポジトリルートになる。
     static func defaultMaterialsDirectory(sourceFile: String = #filePath) -> URL {
         URL(fileURLWithPath: sourceFile)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-            .appendingPathComponent("Docs/materials", isDirectory: true)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("assets/showcase", isDirectory: true)
     }
 
     /// 展示素材ディレクトリを解決する。
     /// 環境変数 `SLEEVES_SHOWCASE_DIR` が指定されていればそれを優先し、
-    /// 未指定・空文字ならリポジトリの `Docs/materials` を返す。
+    /// 未指定・空文字ならリポジトリの `assets/showcase` を返す。
     static func resolveMaterialsDirectory(
         environment: [String: String] = ProcessInfo.processInfo.environment,
         sourceFile: String = #filePath

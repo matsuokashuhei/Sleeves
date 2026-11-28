@@ -89,7 +89,7 @@ final class ShelfStore: ObservableObject {
 
     #if DEBUG
     /// 展示モードへ切り替える。現在の本物データをメモリ上に退避し、
-    /// `Docs/materials/` の画像から生成した展示用エントリへ差し替える。
+    /// `assets/showcase/` の画像から生成した展示用エントリへ差し替える。
     /// `albums.json` や `Artwork/` には一切触れない。
     func enterShowcaseMode() {
         guard !isShowcaseActive else { return }
