@@ -723,6 +723,23 @@ pstackが参照する`cursor-team-kit`の`/deslop`/`control-ui`/`control-cli`は
 - プラグインスキルは `/cursor-team-kit:<skill>` のスラッシュコマンド形式。
   サブエージェントはCLI/Devin Desktopのみでロード(クラウドセッションでは不可)
 
+### Devin専用poteto-mode adapter(2026-11-28 検証済み)
+
+`/devin-poteto-mode` はDevin専用の薄いadapter。genericな
+`/pstack:poteto-mode` 本体は複製せず、原則・playbook・worker規約の
+source of truthとして読む。adapterが持つのはDevin差分だけ:
+`Task`→`run_subagent`、`subagent_type`→`profile`、
+`run_in_background`→`is_background`、poteto delegateを
+`.devin/agents/poteto-swe-write.md` / `poteto-swe-review.md` へ割り当てる
+対応表。両profileとも `model: swe-2-1-high` 固定。
+
+利用前に `bash .agents/plugins/install-cursor-plugins.sh` を実行し、
+pstack本体と `.devin/config.json` のrequiredPluginsをローカル生成しておくこと。
+検証は `bash .agents/skills/devin-poteto-mode/validate.sh`。
+Devinのcustom subagent profileはsession開始時に読み込まれるため、
+`Unknown subagent profile` が出たら設定不足と判断せず新しいDevin sessionで
+確認する。
+
 ### install-cursor-plugins.sh が行う适配(上流からの改変点)
 
 上流(cursor/plugins)を sparse clone して rsync --delete で同期し、
