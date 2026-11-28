@@ -1,0 +1,3 @@
+# Plugin bodies are installed locally by install.sh, not committed
+cursor-team-kit/
+pstack/

@@ -686,12 +686,17 @@ jacketShape(cellIndex:)。実物のLPジャケットは角ごとにわずかに�
 
 ## エージェントプラグイン(cursor-team-kit / pstack)のプロジェクトレベル有効化(2026-11-28 検証済み)
 
-`.agents/plugins/` に Cursor 製プラグインを Agent Plugins 1.0.0 仕様準拠で
-vendor している。**cursor-team-kit**(18スキル+2サブエージェント。
+**プラグイン本体はリポジトリにコミットしない**。`.agents/plugins/install.sh`
+が上流(cursor/plugins)から取得して `.agents/plugins/` にローカル展開する
+(`.gitignore` 済み。node_modules と同じ運用)。**clone 後や初回は必ず
+`bash .agents/plugins/install.sh` を実行すること** — 実行しないと
+`.devin/config.json` の参照先が存在せずプラグインは読み込まれない。
+更新も同じコマンドの再実行で、upstream main 最新に rsync --delete で同期される。
+導入しているのは **cursor-team-kit**(18スキル+2サブエージェント。
 `deslop`/`verify-this`/`loop-on-ci`/`control-ui`等)と
 **pstack**(59スキル+2サブエージェント。`/pstack:poteto-mode`が中心。
 pstackが参照する`cursor-team-kit`の`/deslop`/`control-ui`/`control-cli`は
-同時にvendorしたcursor-team-kitで満たされる)。有効化の検証済み事実:
+同時にinstallしたcursor-team-kitで満たされる)。有効化の検証済み事実:
 
 - **`.devin/config.json` の `requiredPlugins` にローカル相対パス
   `"./.agents/plugins/cursor-team-kit"` を書く方式で有効化できる**
@@ -704,13 +709,6 @@ pstackが参照する`cursor-team-kit`の`/deslop`/`control-ui`/`control-cli`は
   (OpenAI/Codex の規約であって Devin の規約ではない。実機検証済み)
 - `devin plugins install/list` 等のプラグイン管理コマンドはクラウド認証
   (`devin auth login`)必須だが、repo レベルの requiredPlugins 解決には不要
-- vendored 版は上流(cursor/plugins)からの改変点: cursor-team-kit は
-  root `plugin.json` 追加、`.cursor-plugin/` 除外、
-  `assets/avatar.png`→`icon.png` リネーム、`agents/ci-watcher.md` から
-  `model: fast`/`is_background` 除去。pstack は `.cursor-plugin/` 除外、
-  `assets/logo.png`→`icon.png` リネーム、`agents/poteto-agent.md` から
-  `model: claude-opus-5-5-xhigh-fast`/`is_background` 除去
-  (いずれもCursor専用値で他エージェントで無効なため)
 - pstack の注意点: スキル本文にCursor専用モデルスラッグ
   (`claude-opus-5-5-xhigh-fast`等)や `~/.cursor/rules` パスの言及が残るが
   散文レベルの話で、マルチモデルパネル等の高度な機能はDevinでは
@@ -722,22 +720,17 @@ pstackが参照する`cursor-team-kit`の`/deslop`/`control-ui`/`control-cli`は
 - プラグインスキルは `/cursor-team-kit:<skill>` のスラッシュコマンド形式。
   サブエージェントはCLI/Devin Desktopのみでロード(クラウドセッションでは不可)
 
-### プラグインのアップデート(2026-11-28 検証済み)
-
-`.agents/plugins/update.sh` を実行する(引数なしで両方、引数で個別指定):
-
-```bash
-bash .agents/plugins/update.sh          # 両方を upstream main 最新へ
-bash .agents/plugins/update.sh pstack   # pstack だけ
-```
+### install.sh が行う适配(上流からの改変点)
 
 上流(cursor/plugins)を sparse clone して rsync --delete で同期し、
-上記の适配修正(.cursor-plugin除外、アイコンリネーム、非ポータブルfrontmatter除去、
-cursor-team-kitのplugin.json再生成)を自動で再適用する。
+以下を自動適用する: `.cursor-plugin/` 除外、
+`assets/avatar.png`/`logo.png`→`icon.png` リネーム、
+agents/*.md から非ポータブルな `model:`/`is_background:` 行を除去、
+cursor-team-kit の root `plugin.json` を上流 `.cursor-plugin/plugin.json` から
+jq で変換生成(Cursor固有キーを落とし、それ以外のメタデータは上流を継承)。
 冪等性は「退避→スクリプトで再インストール→diff -rで完全一致」を実施済み。
-実行後は `git diff .agents/plugins/` で差分をレビューし、
-`devin skills list` のdiscoveryログ(active_plugins/skills/agents数)で検証してから
-コミットすること。
+実行後は `devin skills list` の discovery ログ
+(active_plugins=2 skills=77 agents=4)で検証できる。
 
 ## ウィジェット拡張について(2026-10-24 撤去済み)
 
