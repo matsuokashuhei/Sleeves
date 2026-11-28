@@ -684,6 +684,44 @@ jacketShape(cellIndex:)。実物のLPジャケットは角ごとにわずかに�
     カタログが生成するInfoPlist.stringsが使われる)
 - `project.yml` — xcodegen定義(ターゲット変更はここを編集)
 
+## エージェントプラグイン(cursor-team-kit / pstack)のプロジェクトレベル有効化(2026-11-28 検証済み)
+
+`.agents/plugins/` に Cursor 製プラグインを Agent Plugins 1.0.0 仕様準拠で
+vendor している。**cursor-team-kit**(18スキル+2サブエージェント。
+`deslop`/`verify-this`/`loop-on-ci`/`control-ui`等)と
+**pstack**(59スキル+2サブエージェント。`/pstack:poteto-mode`が中心。
+pstackが参照する`cursor-team-kit`の`/deslop`/`control-ui`/`control-cli`は
+同時にvendorしたcursor-team-kitで満たされる)。有効化の検証済み事実:
+
+- **`.devin/config.json` の `requiredPlugins` にローカル相対パス
+  `"./.agents/plugins/cursor-team-kit"` を書く方式で有効化できる**
+  (公式ドキュメントは git ソースのみ記載だが、ローカルパスも実際には受理される)。
+  リモートfetchではなく作業コピーそのものが使われるので編集が即反映される
+- 検証は認証不要で `devin skills list` を実行し、ログの
+  `plugins discovery: ... active_plugins=1 skills=18 agents=2` と
+  出力の `/cursor-team-kit:<skill>` 行で確認できる
+- **`.agents/plugins/marketplace.json` は Devin に自動ロードされない**
+  (OpenAI/Codex の規約であって Devin の規約ではない。実機検証済み)
+- `devin plugins install/list` 等のプラグイン管理コマンドはクラウド認証
+  (`devin auth login`)必須だが、repo レベルの requiredPlugins 解決には不要
+- vendored 版は上流(cursor/plugins)からの改変点: cursor-team-kit は
+  root `plugin.json` 追加、`.cursor-plugin/` 除外、
+  `assets/avatar.png`→`icon.png` リネーム、`agents/ci-watcher.md` から
+  `model: fast`/`is_background` 除去。pstack は `.cursor-plugin/` 除外、
+  `assets/logo.png`→`icon.png` リネーム、`agents/poteto-agent.md` から
+  `model: claude-opus-5-5-xhigh-fast`/`is_background` 除去
+  (いずれもCursor専用値で他エージェントで無効なため)
+- pstack の注意点: スキル本文にCursor専用モデルスラッグ
+  (`claude-opus-5-5-xhigh-fast`等)や `~/.cursor/rules` パスの言及が残るが
+  散文レベルの話で、マルチモデルパネル等の高度な機能はDevinでは
+  デフォルトモデルに読み替わる。principle-* 系の原則スキルや
+  swarm/arena/unslop 等のワークフローはモデル非依存でそのまま機能する
+- pstack のスキルは `disable-model-invocation` 付きが多く
+  `/pstack:<skill>` スラッシュコマンドで明示起動する設計
+  (Devinもこのフィールドを解釈することを確認済み — 一覧で`[user]`表示)
+- プラグインスキルは `/cursor-team-kit:<skill>` のスラッシュコマンド形式。
+  サブエージェントはCLI/Devin Desktopのみでロード(クラウドセッションでは不可)
+
 ## ウィジェット拡張について(2026-10-24 撤去済み)
 
 WidgetKit拡張(RecordsWidget)は**撤去した**。正方形ウィジェット枠内で
