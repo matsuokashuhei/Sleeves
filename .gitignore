@@ -65,3 +65,20 @@ fastlane/test_output
 .devin/config.local.json
 # Devin plugin registration (machine-managed by .agents/plugins/install-cursor-plugins.sh)
 .devin/config.json
+
+# Terraform
+**/.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+*.tfvars
+!*.tfvars.example
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+infra/cloudflare/backend.hcl
+infra/cloudflare/tfplan
