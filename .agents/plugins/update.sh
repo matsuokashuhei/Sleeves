@@ -46,32 +46,16 @@ for plugin in "${PLUGINS[@]}"; do
     sed -i '' -e '/^model: /d' -e '/^is_background: /d' "$agent"
   done
 
-  # cursor-team-kit ships no portable manifest; regenerate it with the upstream version
+  # cursor-team-kit ships no portable manifest; transform the upstream
+  # .cursor-plugin/plugin.json into one (inherits upstream metadata as-is,
+  # drops Cursor-specific keys, prepends the 1.0.0 $schema)
   if [ "$plugin" = cursor-team-kit ]; then
-    version="$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "$src/.cursor-plugin/plugin.json" | head -1)"
-    cat > "$dst/plugin.json" <<EOF
-{
-  "\$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
-  "name": "cursor-team-kit",
-  "version": "${version:-0.0.0}",
-  "description": "Internal engineering team workflows for CI, code review, shipping, control-cli, control-ui, verify-this, test reliability, code cleanup, and work summaries. Designed to work without requiring third-party service integrations.",
-  "author": {
-    "name": "Eric Zakariasson"
-  },
-  "homepage": "https://github.com/cursor/plugins",
-  "repository": "https://github.com/cursor/plugins",
-  "license": "MIT",
-  "keywords": [
-    "ci",
-    "code-review",
-    "shipping",
-    "testing",
-    "verification",
-    "local-automation"
-  ]
-}
-EOF
-    echo "    plugin.json regenerated at version ${version:-unknown}"
+    jq '
+      del(.displayName, .logo, .category, .tags, .skills, .agents, .rules)
+      | .version //= "0.0.0"
+      | {"$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json"} + .
+    ' "$src/.cursor-plugin/plugin.json" > "$dst/plugin.json"
+    echo "    plugin.json transformed from upstream at version $(jq -r .version "$dst/plugin.json")"
   fi
 done
 
