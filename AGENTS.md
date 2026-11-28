@@ -684,6 +684,74 @@ jacketShape(cellIndex:)。実物のLPジャケットは角ごとにわずかに�
     カタログが生成するInfoPlist.stringsが使われる)
 - `project.yml` — xcodegen定義(ターゲット変更はここを編集)
 
+## エージェントプラグイン(cursor-team-kit / pstack)のプロジェクトレベル有効化(2026-11-28 検証済み)
+
+**プラグイン本体はリポジトリにコミットしない**。
+`.agents/plugins/install-cursor-plugins.sh` が上流(cursor/plugins)から取得して
+`.agents/plugins/` にローカル展開する(`.gitignore` 済み。node_modules と同じ運用)。
+**clone 後や初回は必ず `bash .agents/plugins/install-cursor-plugins.sh` を実行すること**
+— このスクリプトは本体の展開に加えて、`.devin/config.json` の `requiredPlugins` に
+プラグインのパスを登録する(ファイルが無ければ作成、既存なら他キーを保持したまま
+jq でマージ。`.devin/config.json` はコミットせず gitignore 済みのローカル状態)。
+更新も同じコマンドの再実行で、upstream main 最新に rsync --delete で同期される。
+導入しているのは **cursor-team-kit**(18スキル+2サブエージェント。
+`deslop`/`verify-this`/`loop-on-ci`/`control-ui`等)と
+**pstack**(59スキル+2サブエージェント。`/pstack:poteto-mode`が中心。
+pstackが参照する`cursor-team-kit`の`/deslop`/`control-ui`/`control-cli`は
+同時にinstallしたcursor-team-kitで満たされる)。有効化の検証済み事実:
+
+- **`.devin/config.json` の `requiredPlugins` にローカル相対パス
+  `"./.agents/plugins/cursor-team-kit"` を書く方式で有効化できる**
+  (公式ドキュメントは git ソースのみ記載だが、ローカルパスも実際には受理される)。
+  リモートfetchではなく作業コピーそのものが使われるので編集が即反映される。
+  この登録は install-cursor-plugins.sh が自動で行う(手で書く必要はない)
+- 検証は認証不要で `devin skills list` を実行し、ログの
+  `plugins discovery: ... active_plugins=1 skills=18 agents=2` と
+  出力の `/cursor-team-kit:<skill>` 行で確認できる
+- **`.agents/plugins/marketplace.json` は Devin に自動ロードされない**
+  (OpenAI/Codex の規約であって Devin の規約ではない。実機検証済み)
+- `devin plugins install/list` 等のプラグイン管理コマンドはクラウド認証
+  (`devin auth login`)必須だが、repo レベルの requiredPlugins 解決には不要
+- pstack の注意点: スキル本文にCursor専用モデルスラッグ
+  (`claude-opus-5-5-xhigh-fast`等)や `~/.cursor/rules` パスの言及が残るが
+  散文レベルの話で、マルチモデルパネル等の高度な機能はDevinでは
+  デフォルトモデルに読み替わる。principle-* 系の原則スキルや
+  swarm/arena/unslop 等のワークフローはモデル非依存でそのまま機能する
+- pstack のスキルは `disable-model-invocation` 付きが多く
+  `/pstack:<skill>` スラッシュコマンドで明示起動する設計
+  (Devinもこのフィールドを解釈することを確認済み — 一覧で`[user]`表示)
+- プラグインスキルは `/cursor-team-kit:<skill>` のスラッシュコマンド形式。
+  サブエージェントはCLI/Devin Desktopのみでロード(クラウドセッションでは不可)
+
+### Devin専用poteto-mode adapter(2026-11-28 検証済み)
+
+`/devin-poteto-mode` はDevin専用の薄いadapter。genericな
+`/pstack:poteto-mode` 本体は複製せず、原則・playbook・worker規約の
+source of truthとして読む。adapterが持つのはDevin差分だけ:
+`Task`→`run_subagent`、`subagent_type`→`profile`、
+`run_in_background`→`is_background`、poteto delegateを
+`.devin/agents/poteto-swe-write.md` / `poteto-swe-review.md` へ割り当てる
+対応表。両profileとも `model: swe-2-1-high` 固定。
+
+利用前に `bash .agents/plugins/install-cursor-plugins.sh` を実行し、
+pstack本体と `.devin/config.json` のrequiredPluginsをローカル生成しておくこと。
+検証は `bash .agents/skills/devin-poteto-mode/validate.sh`。
+Devinのcustom subagent profileはsession開始時に読み込まれるため、
+`Unknown subagent profile` が出たら設定不足と判断せず新しいDevin sessionで
+確認する。
+
+### install-cursor-plugins.sh が行う适配(上流からの改変点)
+
+上流(cursor/plugins)を sparse clone して rsync --delete で同期し、
+以下を自動適用する: `.cursor-plugin/` 除外、
+`assets/avatar.png`/`logo.png`→`icon.png` リネーム、
+agents/*.md から非ポータブルな `model:`/`is_background:` 行を除去、
+cursor-team-kit の root `plugin.json` を上流 `.cursor-plugin/plugin.json` から
+jq で変換生成(Cursor固有キーを落とし、それ以外のメタデータは上流を継承)。
+冪等性は「退避→スクリプトで再インストール→diff -rで完全一致」を実施済み。
+実行後は `devin skills list` の discovery ログ
+(active_plugins=2 skills=77 agents=4)で検証できる。
+
 ## ウィジェット拡張について(2026-10-24 撤去済み)
 
 WidgetKit拡張(RecordsWidget)は**撤去した**。正方形ウィジェット枠内で
