@@ -722,6 +722,23 @@ pstackが参照する`cursor-team-kit`の`/deslop`/`control-ui`/`control-cli`は
 - プラグインスキルは `/cursor-team-kit:<skill>` のスラッシュコマンド形式。
   サブエージェントはCLI/Devin Desktopのみでロード(クラウドセッションでは不可)
 
+### プラグインのアップデート(2026-11-28 検証済み)
+
+`.agents/plugins/update.sh` を実行する(引数なしで両方、引数で個別指定):
+
+```bash
+bash .agents/plugins/update.sh          # 両方を upstream main 最新へ
+bash .agents/plugins/update.sh pstack   # pstack だけ
+```
+
+上流(cursor/plugins)を sparse clone して rsync --delete で同期し、
+上記の适配修正(.cursor-plugin除外、アイコンリネーム、非ポータブルfrontmatter除去、
+cursor-team-kitのplugin.json再生成)を自動で再適用する。
+冪等性は「退避→スクリプトで再インストール→diff -rで完全一致」を実施済み。
+実行後は `git diff .agents/plugins/` で差分をレビューし、
+`devin skills list` のdiscoveryログ(active_plugins/skills/agents数)で検証してから
+コミットすること。
+
 ## ウィジェット拡張について(2026-10-24 撤去済み)
 
 WidgetKit拡張(RecordsWidget)は**撤去した**。正方形ウィジェット枠内で
