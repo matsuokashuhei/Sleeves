@@ -1,0 +1,3 @@
+zone_id      = "<CLOUDFLARE_ZONE_ID>"
+project_name = "sleeves-web"
+subdomain    = "sleeves"

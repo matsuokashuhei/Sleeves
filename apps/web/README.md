@@ -33,6 +33,13 @@ docker stop sleeves-website
    - `site/privacy/index.html`
    - `site/terms/index.html`
 2. **App Store Connect 設定**:
-   - **Marketing URL**: `https://<your-domain>/`
-   - **Support URL**: `https://<your-domain>/support/`
-   - **Privacy Policy URL**: `https://<your-domain>/privacy/`
+   - **Marketing URL**: `https://sleeves.cacheandbuffer.com/`
+   - **Support URL**: `https://sleeves.cacheandbuffer.com/support/`
+   - **Privacy Policy URL**: `https://sleeves.cacheandbuffer.com/privacy/`
+
+## 本番ホスティング（Cloudflare Pages）
+
+- **公開 URL**: https://sleeves.cacheandbuffer.com
+- **インフラ管理**: Cloudflare Pages プロジェクト・カスタムドメイン・DNS（CNAME）は [infra/cloudflare/](../../infra/cloudflare/README.md) の Terraform で管理しています（Docker イメージ `hashicorp/terraform:1.17.2` 経由、State は Cloudflare R2）。
+- **レスポンスヘッダ**: [site/_headers](site/_headers) でセキュリティヘッダとキャッシュ制御を定義しています。
+- **デプロイ**: `.github/workflows/web-deploy.yml` により、`apps/web/site/**` の変更時に `main` ブランチは本番デプロイ、PR はプレビューデプロイが自動実行されます。
