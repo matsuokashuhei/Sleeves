@@ -59,6 +59,11 @@ require_fixed 'os.Logger' "$adapter"
 require_fixed 'screencapture' "$adapter"
 require_fixed 'Unknown subagent profile' "$adapter"
 require_fixed 'cloud_base_branch' "$adapter"
+require_fixed 'auto-deny unapproved write and execution tools' "$adapter"
+require_fixed 'use foreground execution by default' "$adapter"
+require_fixed 'does not create Devin Cloud sessions' "$adapter"
+require_fixed 'separate git worktree' "$adapter"
+require_fixed 'serialize the workers' "$adapter"
 
 shopt -s nullglob
 poteto_profiles=(.devin/agents/poteto-*.md)
@@ -67,6 +72,17 @@ poteto_profiles=(.devin/agents/poteto-*.md)
 if rg -q '^allowed-tools:' "$write_profile" 2>/dev/null; then
   fail "$write_profile should not restrict allowed-tools"
 fi
+actual_tools="$(awk '
+  /^allowed-tools:/ { in_block=1; print; next }
+  in_block && /^  - / { print; next }
+  in_block { exit }
+' "$review_profile")"
+expected_tools='allowed-tools:
+  - read
+  - grep
+  - glob
+  - exec'
+[[ "$actual_tools" == "$expected_tools" ]] || fail "$review_profile must restrict allowed-tools exactly to read, grep, glob, and exec"
 require_fixed 'Do not edit, create, delete, move, or otherwise mutate files.' "$review_profile"
 require_fixed 'Review evidence, not self-reports.' "$review_profile"
 
@@ -80,7 +96,7 @@ if ! skills_output="$(devin skills list 2>&1)"; then
   fail "devin skills list failed: $skills_output"
 fi
 
-printf '%s\n' "$skills_output" | rg -q -F '/pstack:poteto-mode' || fail "devin skills list does not contain /pstack:poteto-mode"
-printf '%s\n' "$skills_output" | rg -q -F '/devin-poteto-mode' || fail "devin skills list does not contain /devin-poteto-mode"
+rg -q -F '/pstack:poteto-mode' <<< "$skills_output" || fail "devin skills list does not contain /pstack:poteto-mode"
+rg -q -F '/devin-poteto-mode' <<< "$skills_output" || fail "devin skills list does not contain /devin-poteto-mode"
 
 printf 'validate.sh: ok\n'

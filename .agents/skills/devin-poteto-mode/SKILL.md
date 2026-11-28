@@ -43,9 +43,15 @@ Respect any narrower profile explicitly required by a project skill, such as `bu
 
 If `run_subagent` reports `Unknown subagent profile`, treat it as a stale profile list in the running session, not as missing configuration. Do not silently fall back to an unpinned profile. Report that a new Devin session is required to use the project profiles. `devin doctor` proves that Devin can load the profile files. It does not prove that the current session can spawn them.
 
-## Cloud-only Cursor arguments
+## Background and permission behavior
 
-Devin `run_subagent` has no `environment` or `cloud_base_branch` argument. Do not pass them. Run poteto swarm workers as local background subagents unless the user explicitly asks for cloud execution. If a worker needs a non-default base branch, the parent must prepare the branch or worktree, or name the exact branch or SHA in the worker task.
+`run_in_background` maps to `is_background`, but Devin background subagents auto-deny unapproved write and execution tools. For write-capable poteto delegates, use foreground execution by default in normal permission mode. Use background write delegates only when the user or session has already approved the required writes or explicitly accepts unattended operation. Read-only review and exploration delegates can run in the background. If a background delegate is denied, do not silently fall back to another profile. Respawn or resume it in the foreground with the original brief, every later directive, the prior report, and the branch or worktree.
+
+## Cloud-only Cursor arguments and write isolation
+
+Devin `run_subagent` has no `environment` or `cloud_base_branch` argument and does not create Devin Cloud sessions. Do not pass them. If the user explicitly requires cloud execution, say that this adapter cannot provide it through `run_subagent` instead of silently substituting local execution. Otherwise run poteto swarm workers locally.
+
+Parallel write workers must not share mutable state. Give each worker a separate git worktree, or assign disjoint owned files and non-overlapping outputs. If neither isolation nor disjoint ownership is possible, serialize the workers. The parent integrates the results. If a worker needs a non-default base branch, the parent must prepare the branch or worktree, or name the exact branch or SHA in the worker task.
 
 ## Sleeves verification override
 
