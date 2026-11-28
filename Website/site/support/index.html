@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="ja" data-lang="ja"
+  data-title-ja="サポート — Sleeves"
+  data-title-en="Support — Sleeves">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>サポート — Sleeves</title>
+  <meta name="description" content="macOSアプリ Sleeves の使い方、よくある質問（FAQ）、お問い合わせ先。" />
+  <link rel="icon" type="image/png" href="/assets/icons/favicon.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+  <header class="site-header">
+    <div class="container site-header__inner">
+      <a class="brand" href="/">
+        <img class="brand__icon" src="/assets/icons/app-icon.png" alt="Sleeves App Icon" width="34" height="34" />
+        <span class="brand__name">Sleeves</span>
+      </a>
+      <nav class="site-nav" aria-label="Main navigation">
+        <a class="site-nav__link" href="/#features">
+          <span data-lang-only="ja">機能</span>
+          <span data-lang-only="en">Features</span>
+        </a>
+        <a class="site-nav__link" href="/support/" aria-current="page">
+          <span data-lang-only="ja">サポート</span>
+          <span data-lang-only="en">Support</span>
+        </a>
+        <a class="site-nav__link" href="/privacy/">
+          <span data-lang-only="ja">プライバシー</span>
+          <span data-lang-only="en">Privacy</span>
+        </a>
+        <div class="lang-switch" role="group" aria-label="Language switcher">
+          <button type="button" class="lang-switch__btn" data-set-lang="ja" aria-pressed="true">日本語</button>
+          <button type="button" class="lang-switch__btn" data-set-lang="en" aria-pressed="false">EN</button>
+        </div>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="page-hero">
+      <div class="container container--prose">
+        <span class="eyebrow">
+          <span data-lang-only="ja">ヘルプ &amp; サポート</span>
+          <span data-lang-only="en">Help &amp; Support</span>
+        </span>
+        <h1 class="page-hero__title">
+          <span data-lang-only="ja">サポート</span>
+          <span data-lang-only="en">Support</span>
+        </h1>
+        <p class="page-hero__meta">
+          <span data-lang-only="ja">Sleeves の基本的な使い方、よくある質問、およびお問い合わせ方法をご案内します。</span>
+          <span data-lang-only="en">Quick start tips, frequently asked questions, and how to get in touch.</span>
+        </p>
+      </div>
+    </section>
+
+    <section class="prose">
+      <div class="container container--prose">
+        <!-- Japanese Content -->
+        <div data-lang-only="ja">
+          <h2>クイックスタート</h2>
+          <ol>
+            <li><strong>アルバム・プレイリストを追加する</strong>: Apple Music または Spotify からアルバム／プレイリストのリンクをシェルフ上へドラッグ＆ドロップするか、空きスロットをクリックして貼り付けます。</li>
+            <li><strong>再生・一時停止する</strong>: ジャケットを1回クリックすると再生が始まります。再生中のジャケットをもう一度クリックすると一時停止します。</li>
+            <li><strong>並べ替え・削除する</strong>: ジャケットをドラッグして好きなスロットへ移動できます（複数シェルフ間の移動にも対応）。削除したい場合はジャケットを右クリックしてください。</li>
+            <li><strong>見た目をカスタマイズする</strong>: ウィンドウ右上のメニュー（<code>•••</code>）から <strong>Settings…</strong> を開くと、行列数、棚スタイル、木目、壁材、経年エフェクト、Dockアイコンを変更できます。</li>
+          </ol>
+
+          <h2>よくある質問（FAQ）</h2>
+          <div class="faq-list">
+            <details class="faq-item" open>
+              <summary>動作環境を教えてください</summary>
+              <div class="faq-item__body">
+                macOS 26.0 以降を搭載した Mac（Apple Silicon / Intel 両対応）が必要です。再生には Apple Music の有効なサブスクリプション、または Spotify アプリの利用環境が必要です。
+              </div>
+            </details>
+
+            <details class="faq-item">
+              <summary>Apple Music のアルバムと Spotify のプレイリストを同じ棚に置けますか？</summary>
+              <div class="faq-item__body">
+                はい、同じシェルフに混在して配置できます。Apple Music と Spotify のURLをそのままドロップまたは貼り付けるだけで自動的に判別されます。
+              </div>
+            </details>
+
+            <details class="faq-item">
+              <summary>複数のシェルフを作ることはできますか？</summary>
+              <div class="faq-item__body">
+                はい。右上のメニュー（<code>•••</code>）から <strong>New Shelf</strong> を選ぶと、新しいシェルフウィンドウを作成できます。ジャンル別や気分別に棚を分け、それぞれの棚で異なる壁材や木目を設定できます。
+              </div>
+            </details>
+
+            <details class="faq-item">
+              <summary>登録したデータはどこに保存されますか？</summary>
+              <div class="faq-item__body">
+                シェルフの登録内容と設定はすべてお使いの Mac 内のローカルフォルダにJSON形式で保存されます。外部サーバーへの送信やアカウント連携は行いません。
+              </div>
+            </details>
+
+            <details class="faq-item">
+              <summary>再生やアートワーク取得がうまく動かない場合は？</summary>
+              <div class="faq-item__body">
+                「システム設定」→「プライバシーとセキュリティ」にて、Sleeves に対する「メディアとApple Music」および「オートメーション」の権限が許可されているかご確認ください。
+              </div>
+            </details>
+          </div>
+
+          <h2>お問い合わせ</h2>
+          <p>不具合のご報告や機能のご要望は、以下のメールアドレスまでご連絡ください。その際、お使いの macOS バージョンと Sleeves のバージョンを添えていただけるとスムーズです。</p>
+
+          <!-- TODO: Replace support@example.com with your actual support email address -->
+          <div class="contact-box">
+            <div>
+              <div style="font-size:0.82rem;color:var(--ink-tertiary);margin-bottom:4px;">サポート窓口（メール）</div>
+              <a class="contact-box__email" href="mailto:support@example.com">support@example.com</a>
+            </div>
+            <a class="btn btn--primary" href="mailto:support@example.com?subject=Sleeves%20Support">メールを送る</a>
+          </div>
+        </div>
+
+        <!-- English Content -->
+        <div data-lang-only="en">
+          <h2>Quick Start</h2>
+          <ol>
+            <li><strong>Add albums &amp; playlists</strong>: Drag and drop an album or playlist link from Apple Music or Spotify onto any slot, or click an empty slot to paste from your clipboard.</li>
+            <li><strong>Play &amp; pause</strong>: Click any sleeve once to start playing. Click the playing sleeve again to pause.</li>
+            <li><strong>Rearrange &amp; remove</strong>: Drag sleeves freely to any slot — including across multiple shelf windows. Right-click a sleeve to remove it.</li>
+            <li><strong>Customize your shelf</strong>: Click the top-right menu (<code>•••</code>) and choose <strong>Settings…</strong> to configure grid size, shelf style, wood finish, wall material, analog aging effects, and Dock icon.</li>
+          </ol>
+
+          <h2>Frequently Asked Questions</h2>
+          <div class="faq-list">
+            <details class="faq-item" open>
+              <summary>What are the system requirements?</summary>
+              <div class="faq-item__body">
+                Sleeves requires macOS 26.0 or later (Apple Silicon or Intel). Music playback requires an active Apple Music subscription and/or the Spotify desktop app.
+              </div>
+            </details>
+
+            <details class="faq-item">
+              <summary>Can I mix Apple Music and Spotify on the same shelf?</summary>
+              <div class="faq-item__body">
+                Yes. You can place Apple Music albums/playlists and Spotify albums/playlists side by side on the same shelf. Sleeves automatically detects the service from the link you drop or paste.
+              </div>
+            </details>
+
+            <details class="faq-item">
+              <summary>Can I create multiple shelves?</summary>
+              <div class="faq-item__body">
+                Yes. Open the top-right menu (<code>•••</code>) and select <strong>New Shelf</strong>. Each shelf window can have its own dimensions, wood finish, wall texture, and lighting.
+              </div>
+            </details>
+
+            <details class="faq-item">
+              <summary>Where is my shelf data stored?</summary>
+              <div class="faq-item__body">
+                All shelf entries and preferences are stored locally on your Mac as JSON files. Nothing is uploaded to external servers and no account is required.
+              </div>
+            </details>
+
+            <details class="faq-item">
+              <summary>Playback isn’t starting — what should I check?</summary>
+              <div class="faq-item__body">
+                Open <strong>System Settings → Privacy &amp; Security</strong> and confirm that Sleeves is allowed under <strong>Media &amp; Apple Music</strong> and <strong>Automation</strong>.
+              </div>
+            </details>
+          </div>
+
+          <h2>Contact Us</h2>
+          <p>For bug reports, questions, or feature requests, please email us below. Including your macOS version and Sleeves version helps us respond faster.</p>
+
+          <!-- TODO: Replace support@example.com with your actual support email address -->
+          <div class="contact-box">
+            <div>
+              <div style="font-size:0.82rem;color:var(--ink-tertiary);margin-bottom:4px;">Email Support</div>
+              <a class="contact-box__email" href="mailto:support@example.com">support@example.com</a>
+            </div>
+            <a class="btn btn--primary" href="mailto:support@example.com?subject=Sleeves%20Support">Send Email</a>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <div class="site-footer__top">
+        <a class="brand" href="/">
+          <img class="brand__icon" src="/assets/icons/app-icon.png" alt="Sleeves" width="30" height="30" />
+          <span class="brand__name">Sleeves</span>
+        </a>
+        <div class="site-footer__links">
+          <a href="/"><span data-lang-only="ja">ホーム</span><span data-lang-only="en">Home</span></a>
+          <a href="/support/"><span data-lang-only="ja">サポート</span><span data-lang-only="en">Support</span></a>
+          <a href="/privacy/"><span data-lang-only="ja">プライバシーポリシー</span><span data-lang-only="en">Privacy Policy</span></a>
+          <a href="/terms/"><span data-lang-only="ja">利用規約</span><span data-lang-only="en">Terms of Use</span></a>
+        </div>
+      </div>
+      <div class="site-footer__bottom">
+        <span>© 2026 cacheandbuffer. All rights reserved.</span>
+      </div>
+    </div>
+  </footer>
+
+  <script src="/js/app.js"></script>
+</body>
+</html>
