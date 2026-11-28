@@ -1,5 +1,5 @@
 #!/bin/bash
-# install-cursor-pluglins.sh [plugin ...] — install agent plugins from cursor/plugins upstream.
+# install-cursor-plugins.sh [plugin ...] — install agent plugins from cursor/plugins upstream.
 #
 # Fetches the latest upstream main, syncs each plugin into .agents/plugins/<name>,
 # and re-applies the portability fixes documented in AGENTS.md:
