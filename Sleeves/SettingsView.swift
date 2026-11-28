@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import UniformTypeIdentifiers
 import os
 
 /// 設定画面(シェルフ右上のツールバー→「Settings…」から開く)。
@@ -870,10 +871,11 @@ private struct PluginOptionsRow: View {
     }
 }
 
-/// Dockアイコンのプリセット選択(Generalペイン)。
+/// Dockアイコンのプリセット＋カスタム画像選択(Generalペイン)。
 /// アプリ全体共通の設定なのでShelfStoreは要求しない
 /// (フォーカス中シェルフが無くても操作できる)。
-/// サムネイルを横並びにして選択中だけアクセント色の枠を付ける
+/// 1行目に内蔵5プリセット、2行目にCustom 3スロットを左揃えで並べ、
+/// 選択中のCustomスロット右上に削除バッジボタンを重ねる
 private struct AppIconPicker: View {
 
     private static let logger = Logger(subsystem: "com.cacheandbuffer.Sleeves", category: "UI")
@@ -883,47 +885,412 @@ private struct AppIconPicker: View {
     /// サムネイルの角丸。macOSのアイコン形状(連続角丸のsquircle)に
     /// 近づけるため1辺の約22%にしてある
     private static let cornerRadius: CGFloat = 14
+    /// タイル間の水平間隔(1行目の先頭3枚と2行目の3スロットの縦軸を揃える)
+    private static let tileSpacing: CGFloat = 20
+    /// プリセット行とカスタム行の縦間隔
+    private static let rowSpacing: CGFloat = 12
 
     /// 表示中の選択。実体はUserDefaults(AppIconManager.saved)で、
-    /// ここは表示用のミラーとしてタップのたびに更新する
-    @State private var selected: AppIconManager.AppIconPreset = AppIconManager.saved
+    /// ここは表示用のミラーとして.onAppearと操作のたびに同期する
+    @State private var selected: AppIconManager.AppIconSelection = .preset(.default)
+    /// 削除バッジ表示用のフォーカス中カスタムスロット。
+    /// 適用中のアイコン(selected)とは分離し、余白クリックやウィンドウ非アクティブ化で
+    /// 削除ボタンだけを消す(Dockアイコンと選択枠は維持する)
+    @State private var activeCustomSlot: Int? = nil
+    /// 保存済みカスタム画像のサムネイルキャッシュ(.onAppearで読み込む)
+    @State private var customImages: [NSImage?] = Array(repeating: nil, count: AppIconManager.customSlotCount)
+    /// fileImporter で取り込み対象にしているスロット番号
+    @State private var importingSlot: Int? = nil
+    /// 画像ファイル選択シートの表示フラグ
+    @State private var showFileImporter = false
+    /// 読み込み/変換失敗アラートの表示フラグ
+    @State private var showErrorAlert = false
+    /// ドラッグ進入ハイライト中のスロット番号
+    @State private var dropTargetedSlot: Int? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("App Icon")
-            HStack(spacing: 20) {
-                ForEach(AppIconManager.AppIconPreset.allCases) { preset in
-                    Button {
-                        Self.logger.notice("settings: app icon preset tapped \(preset.rawValue, privacy: .public)")
-                        AppIconManager.select(preset)
-                        // selectはapply失敗時に保存しないので、表示も
-                        // 保存値へ寄せ直す(失敗した選択が残らない)
-                        selected = AppIconManager.saved
-                    } label: {
-                        VStack(spacing: 6) {
-                            Image(preset.assetName)
-                                .resizable()
-                                .aspectRatio(1, contentMode: .fit)
-                                .frame(width: Self.thumbnailSize, height: Self.thumbnailSize)
-                                .clipShape(RoundedRectangle(cornerRadius: Self.cornerRadius))
-                                .overlay {
-                                    RoundedRectangle(cornerRadius: Self.cornerRadius)
-                                        .strokeBorder(
-                                            selected == preset
-                                                ? Color.accentColor
-                                                : Color.secondary.opacity(0.3),
-                                            lineWidth: selected == preset ? 2 : 1)
-                                }
-                            Text(LocalizedStringKey(preset.label))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: Self.rowSpacing) {
+                HStack(spacing: Self.tileSpacing) {
+                    ForEach(AppIconManager.AppIconPreset.allCases) { preset in
+                        let isSelected = selected == .preset(preset)
+                        Button {
+                            Self.logger.notice("settings: app icon preset tapped \(preset.rawValue, privacy: .public)")
+                            activeCustomSlot = nil
+                            AppIconManager.select(.preset(preset))
+                            // selectはapply失敗時に保存しないので、表示も
+                            // 保存値へ寄せ直す(失敗した選択が残らない)
+                            selected = AppIconManager.saved
+                        } label: {
+                            VStack(spacing: 6) {
+                                Image(preset.assetName)
+                                    .resizable()
+                                    .aspectRatio(1, contentMode: .fit)
+                                    .frame(width: Self.thumbnailSize, height: Self.thumbnailSize)
+                                    .clipShape(RoundedRectangle(cornerRadius: Self.cornerRadius))
+                                    .overlay {
+                                        RoundedRectangle(cornerRadius: Self.cornerRadius)
+                                            .strokeBorder(
+                                                isSelected
+                                                    ? Color.accentColor
+                                                    : Color.secondary.opacity(0.3),
+                                                lineWidth: isSelected ? 2 : 1)
+                                    }
+                                Text(LocalizedStringKey(preset.label))
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
+                        .buttonStyle(.plain)
+                        .accessibilityAddTraits(isSelected ? .isSelected : [])
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityAddTraits(selected == preset ? .isSelected : [])
+                }
+
+                HStack(spacing: Self.tileSpacing) {
+                    ForEach(0..<AppIconManager.customSlotCount, id: \.self) { slot in
+                        customTile(slot: slot)
+                    }
                 }
             }
-            .padding(.vertical, 4)
+            .padding(.vertical, 6)
         }
+        .onAppear {
+            customImages = AppIconManager.loadAllCustomImages()
+            selected = AppIconManager.saved
+        }
+        .onDisappear {
+            if let slot = activeCustomSlot {
+                Self.logger.notice("settings: app icon custom focus cleared (onDisappear) slot=\(slot, privacy: .public)")
+                activeCustomSlot = nil
+            }
+        }
+        .fileImporter(
+            isPresented: $showFileImporter,
+            allowedContentTypes: [.image]
+        ) { result in
+            let targetSlot = importingSlot ?? 0
+            importingSlot = nil
+            switch result {
+            case .success(let url):
+                Self.logger.notice("settings: app icon fileImporter selected slot=\(targetSlot, privacy: .public) file=\(url.lastPathComponent, privacy: .public)")
+                importCustomImage(from: url, slot: targetSlot)
+            case .failure(let error):
+                let nsError = error as NSError
+                if nsError.domain == NSCocoaErrorDomain && nsError.code == NSUserCancelledError {
+                    Self.logger.notice("settings: app icon fileImporter cancelled slot=\(targetSlot, privacy: .public)")
+                } else {
+                    Self.logger.error("settings: app icon fileImporter FAILED slot=\(targetSlot, privacy: .public): \(String(describing: error), privacy: .public)")
+                    showErrorAlert = true
+                }
+            }
+        }
+        .alert("Couldn’t Set App Icon", isPresented: $showErrorAlert) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("The selected file couldn’t be loaded as an image.")
+        }
+    }
+
+    /// Customスロット1枚。未設定時は破線枠＋"+"でピッカーを開き、
+    /// 設定済み時はサムネイル表示でタップ選択。フォーカス中(activeCustomSlot == slot)の
+    /// 設定済みスロット右上には兄弟ビューとして削除サークルボタンを重ねる
+    /// (Buttonネストによるイベント競合を防止)。どちらの状態でも画像ドロップを受理する
+    private func customTile(slot: Int) -> some View {
+        let image = customImages.indices.contains(slot) ? customImages[slot] : nil
+        let isSelected = selected == .custom(slot)
+        let isBadgeVisible = activeCustomSlot == slot && image != nil
+        let isDropTargeted = dropTargetedSlot == slot
+        let labelText = "\(String(localized: "Custom")) \(slot + 1)"
+        return VStack(spacing: 6) {
+            ZStack(alignment: .topTrailing) {
+                Button {
+                    if image != nil {
+                        Self.logger.notice("settings: app icon custom tile tapped (select) slot=\(slot, privacy: .public)")
+                        AppIconManager.select(.custom(slot))
+                        selected = AppIconManager.saved
+                        activeCustomSlot = (selected == .custom(slot)) ? slot : nil
+                    } else {
+                        Self.logger.notice("settings: app icon custom tile tapped (open picker) slot=\(slot, privacy: .public)")
+                        activeCustomSlot = nil
+                        importingSlot = slot
+                        showFileImporter = true
+                    }
+                } label: {
+                    if let image {
+                        Image(nsImage: image)
+                            .resizable()
+                            .aspectRatio(1, contentMode: .fill)
+                            .frame(width: Self.thumbnailSize, height: Self.thumbnailSize)
+                            .clipShape(RoundedRectangle(cornerRadius: Self.cornerRadius))
+                            .overlay {
+                                RoundedRectangle(cornerRadius: Self.cornerRadius)
+                                    .strokeBorder(
+                                        (isDropTargeted || isSelected)
+                                            ? Color.accentColor
+                                            : Color.secondary.opacity(0.3),
+                                        lineWidth: (isDropTargeted || isSelected) ? 2 : 1)
+                            }
+                    } else {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: Self.cornerRadius)
+                                .strokeBorder(
+                                    isDropTargeted
+                                        ? Color.accentColor
+                                        : Color.secondary.opacity(0.5),
+                                    style: StrokeStyle(
+                                        lineWidth: isDropTargeted ? 2 : 1.5,
+                                        dash: [4, 3]))
+                            Image(systemName: "plus")
+                                .font(.system(size: 18, weight: .medium))
+                                .foregroundStyle(isDropTargeted ? Color.accentColor : .secondary)
+                        }
+                        .frame(width: Self.thumbnailSize, height: Self.thumbnailSize)
+                        .contentShape(RoundedRectangle(cornerRadius: Self.cornerRadius))
+                    }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(Text(labelText))
+                .accessibilityAddTraits(isSelected ? .isSelected : [])
+
+                if isBadgeVisible {
+                    Button {
+                        Self.logger.notice("settings: app icon remove tapped slot=\(slot, privacy: .public)")
+                        activeCustomSlot = nil
+                        AppIconManager.removeCustomImage(slot: slot)
+                        customImages = AppIconManager.loadAllCustomImages()
+                        selected = AppIconManager.saved
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 18))
+                            .symbolRenderingMode(.palette)
+                            .foregroundStyle(.white, .red)
+                            .shadow(color: .black.opacity(0.25), radius: 2, y: 1)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(Text("Remove"))
+                    .offset(x: 6, y: -6)
+                }
+            }
+            .background {
+                OutsideClickDismissMonitor(isActive: isBadgeVisible) { reason in
+                    if activeCustomSlot == slot {
+                        Self.logger.notice("settings: app icon custom focus cleared (\(reason, privacy: .public)) slot=\(slot, privacy: .public)")
+                        activeCustomSlot = nil
+                    }
+                }
+            }
+
+            Text(labelText)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .onDrop(of: [.fileURL, .image], isTargeted: dropTargetedBinding(for: slot)) { providers in
+            handleDrop(providers, slot: slot)
+        }
+    }
+
+    private func dropTargetedBinding(for slot: Int) -> Binding<Bool> {
+        Binding(
+            get: { dropTargetedSlot == slot },
+            set: { targeted in
+                if targeted {
+                    dropTargetedSlot = slot
+                } else if dropTargetedSlot == slot {
+                    dropTargetedSlot = nil
+                }
+            }
+        )
+    }
+
+    private func importCustomImage(from url: URL, slot: Int) {
+        switch AppIconManager.importCustomImage(from: url, slot: slot) {
+        case .success(let image):
+            if customImages.indices.contains(slot) {
+                customImages[slot] = image
+            }
+            selected = AppIconManager.saved
+            activeCustomSlot = slot
+            Self.logger.notice("settings: app icon custom image applied from URL slot=\(slot, privacy: .public)")
+        case .failure(let error):
+            Self.logger.error("settings: app icon import from URL FAILED slot=\(slot, privacy: .public): \(String(describing: error), privacy: .public)")
+            showErrorAlert = true
+        }
+    }
+
+    private func importCustomImage(data: Data, slot: Int) {
+        switch AppIconManager.importCustomImage(data: data, slot: slot) {
+        case .success(let image):
+            if customImages.indices.contains(slot) {
+                customImages[slot] = image
+            }
+            selected = AppIconManager.saved
+            activeCustomSlot = slot
+            Self.logger.notice("settings: app icon custom image applied from dropped data slot=\(slot, privacy: .public)")
+        case .failure(let error):
+            Self.logger.error("settings: app icon import from data FAILED slot=\(slot, privacy: .public): \(String(describing: error), privacy: .public)")
+            showErrorAlert = true
+        }
+    }
+
+    private func handleDrop(_ providers: [NSItemProvider], slot: Int) -> Bool {
+        guard let provider = providers.first else {
+            Self.logger.error("settings: app icon drop ignored (no providers) slot=\(slot, privacy: .public)")
+            return false
+        }
+        if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
+            Self.logger.notice("settings: app icon drop received (fileURL) slot=\(slot, privacy: .public)")
+            provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, error in
+                let droppedURL: URL?
+                if let directURL = item as? URL {
+                    droppedURL = directURL
+                } else if let data = item as? Data {
+                    droppedURL = URL(dataRepresentation: data, relativeTo: nil)
+                } else {
+                    droppedURL = nil
+                }
+                let errorDescription = error.map { String(describing: $0) }
+                Task { @MainActor in
+                    if let errorDescription {
+                        Self.logger.error("settings: app icon drop fileURL load FAILED slot=\(slot, privacy: .public): \(errorDescription, privacy: .public)")
+                        showErrorAlert = true
+                        return
+                    }
+                    guard let droppedURL else {
+                        Self.logger.error("settings: app icon drop fileURL decode FAILED slot=\(slot, privacy: .public)")
+                        showErrorAlert = true
+                        return
+                    }
+                    importCustomImage(from: droppedURL, slot: slot)
+                }
+            }
+            return true
+        }
+        if provider.hasItemConformingToTypeIdentifier(UTType.image.identifier) {
+            Self.logger.notice("settings: app icon drop received (image) slot=\(slot, privacy: .public)")
+            provider.loadDataRepresentation(forTypeIdentifier: UTType.image.identifier) { data, error in
+                let errorDescription = error.map { String(describing: $0) }
+                Task { @MainActor in
+                    if let errorDescription {
+                        Self.logger.error("settings: app icon drop image load FAILED slot=\(slot, privacy: .public): \(errorDescription, privacy: .public)")
+                        showErrorAlert = true
+                        return
+                    }
+                    guard let data else {
+                        Self.logger.error("settings: app icon drop image data nil slot=\(slot, privacy: .public)")
+                        showErrorAlert = true
+                        return
+                    }
+                    importCustomImage(data: data, slot: slot)
+                }
+            }
+            return true
+        }
+        Self.logger.error("settings: app icon drop rejected (unsupported type) slot=\(slot, privacy: .public)")
+        return false
+    }
+}
+
+/// カスタムアイコンの削除バッジ表示中だけ、外側クリックとウィンドウ非アクティブ化を
+/// 検知してフォーカスを解除するための軽量モニタ。
+/// isActive が false になったとき・ビュー破棄時(dismantleNSView/deinit)に必ず
+/// イベントモニタと通知オブザーバを解除する
+private struct OutsideClickDismissMonitor: NSViewRepresentable {
+
+    let isActive: Bool
+    let onDismiss: (String) -> Void
+
+    final class FlippedView: NSView {
+        override var isFlipped: Bool { true }
+    }
+
+    final class Coordinator {
+        private var isMonitoring = false
+        private var mouseMonitor: Any?
+        private var resignObserver: NSObjectProtocol?
+        weak var view: NSView?
+        var onDismiss: (String) -> Void
+
+        init(onDismiss: @escaping (String) -> Void) {
+            self.onDismiss = onDismiss
+        }
+
+        func update(isActive: Bool, view: NSView, onDismiss: @escaping (String) -> Void) {
+            self.view = view
+            self.onDismiss = onDismiss
+            if isActive, !isMonitoring {
+                startMonitoring()
+            } else if !isActive, isMonitoring {
+                teardown()
+            }
+        }
+
+        private func startMonitoring() {
+            isMonitoring = true
+            mouseMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
+                guard let self, let view = self.view else { return event }
+                if event.window !== view.window {
+                    self.onDismiss("outside window click")
+                    return event
+                }
+                let point = view.convert(event.locationInWindow, from: nil)
+                // 右上削除バッジ(offset(x: 6, y: -6) の 18pt アイコン)＋ヒット余白を包含する領域
+                let badgeRect = CGRect(
+                    x: view.bounds.maxX - 16,
+                    y: -10,
+                    width: 26,
+                    height: 26
+                )
+                if !view.bounds.contains(point) && !badgeRect.contains(point) {
+                    self.onDismiss("outside click")
+                }
+                return event
+            }
+            resignObserver = NotificationCenter.default.addObserver(
+                forName: NSWindow.didResignKeyNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] notification in
+                guard let self,
+                      let window = self.view?.window,
+                      (notification.object as? NSWindow) === window
+                else { return }
+                self.onDismiss("window resigned key")
+            }
+        }
+
+        func teardown() {
+            if let mouseMonitor {
+                NSEvent.removeMonitor(mouseMonitor)
+                self.mouseMonitor = nil
+            }
+            if let resignObserver {
+                NotificationCenter.default.removeObserver(resignObserver)
+                self.resignObserver = nil
+            }
+            isMonitoring = false
+        }
+
+        deinit {
+            teardown()
+        }
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onDismiss: onDismiss)
+    }
+
+    func makeNSView(context: Context) -> FlippedView {
+        let view = FlippedView(frame: .zero)
+        context.coordinator.update(isActive: isActive, view: view, onDismiss: onDismiss)
+        return view
+    }
+
+    func updateNSView(_ nsView: FlippedView, context: Context) {
+        context.coordinator.update(isActive: isActive, view: nsView, onDismiss: onDismiss)
+    }
+
+    static func dismantleNSView(_ nsView: FlippedView, coordinator: Coordinator) {
+        coordinator.teardown()
     }
 }

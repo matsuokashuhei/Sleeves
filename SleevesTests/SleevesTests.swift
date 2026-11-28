@@ -5,7 +5,9 @@
 //  Created by Shuhei Matsuoka on 2026/10/18.
 //
 
+import CoreGraphics
 import Foundation
+import ImageIO
 import Testing
 
 /// MediaURLParser(Shared/MediaEntry.swift)の純ロジックテスト。
@@ -738,5 +740,198 @@ struct SpotifyPageParserTests {
     @Test func doesNotDoubleDecodeAmpersand() {
         // &amp;lt; → "&lt;"(エスケープ済みリテラル)であって"<"ではない
         #expect(SpotifyPageParser.decodeHTMLEntities("&amp;lt;") == "&lt;")
+    }
+}
+
+/// AppIconImageProcessor(Shared/AppIconImageProcessor.swift)の純ロジックテスト
+struct AppIconImageProcessorTests {
+
+    private struct RGBA: Equatable {
+        let r: UInt8
+        let g: UInt8
+        let b: UInt8
+        let a: UInt8
+    }
+
+    /// テスト用画像を生成して PNG (または EXIF orientation 付き JPEG/TIFF/PNG) にエンコードする。
+    /// draw ブロックは CGContext (左下原点, width×height) に描画する。
+    private func makeImageData(
+        width: Int,
+        height: Int,
+        orientation: CGImagePropertyOrientation? = nil,
+        type: String = "public.png",
+        draw: (CGContext) -> Void
+    ) -> Data {
+        let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
+        let ctx = CGContext(
+            data: nil,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        )!
+        draw(ctx)
+        let image = ctx.makeImage()!
+        let data = NSMutableData()
+        let dest = CGImageDestinationCreateWithData(data, type as CFString, 1, nil)!
+        let options: [CFString: Any]? = orientation.map { [kCGImagePropertyOrientation: $0.rawValue] }
+        CGImageDestinationAddImage(dest, image, options as CFDictionary?)
+        CGImageDestinationFinalize(dest)
+        return data as Data
+    }
+
+    /// PNG データをデコードし、指定ピクセル座標(左上原点 x, y)の RGBA 値を返す
+    private func decodeAndSample(_ pngData: Data, x: Int, y: Int) -> (width: Int, height: Int, pixel: RGBA)? {
+        guard let source = CGImageSourceCreateWithData(pngData as CFData, nil),
+              let cgImage = CGImageSourceCreateImageAtIndex(source, 0, nil)
+        else { return nil }
+        let width = cgImage.width
+        let height = cgImage.height
+        let bytesPerRow = width * 4
+        var buffer = [UInt8](repeating: 0, count: bytesPerRow * height)
+        let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
+        guard let ctx = CGContext(
+            data: &buffer,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: bytesPerRow,
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+        ctx.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+        let offset = y * bytesPerRow + x * 4
+        let pixel = RGBA(r: buffer[offset], g: buffer[offset + 1], b: buffer[offset + 2], a: buffer[offset + 3])
+        return (width, height, pixel)
+    }
+
+    // MARK: - centerSquareCropRect
+
+    @Test func centerSquareCropRectSquare() {
+        #expect(AppIconImageProcessor.centerSquareCropRect(width: 200, height: 200) == CGRect(x: 0, y: 0, width: 200, height: 200))
+    }
+
+    @Test func centerSquareCropRectLandscape() {
+        #expect(AppIconImageProcessor.centerSquareCropRect(width: 300, height: 100) == CGRect(x: 100, y: 0, width: 100, height: 100))
+    }
+
+    @Test func centerSquareCropRectPortrait() {
+        #expect(AppIconImageProcessor.centerSquareCropRect(width: 100, height: 300) == CGRect(x: 0, y: 100, width: 100, height: 100))
+    }
+
+    @Test func centerSquareCropRectInvalidSizes() {
+        #expect(AppIconImageProcessor.centerSquareCropRect(width: 0, height: 100) == .zero)
+        #expect(AppIconImageProcessor.centerSquareCropRect(width: 100, height: 0) == .zero)
+        #expect(AppIconImageProcessor.centerSquareCropRect(width: -10, height: 100) == .zero)
+        #expect(AppIconImageProcessor.centerSquareCropRect(width: 100, height: -5) == .zero)
+    }
+
+    // MARK: - normalizeSquarePNG
+
+    @Test func normalizeSquareImageProduces824PNG() {
+        let input = makeImageData(width: 100, height: 100) { ctx in
+            ctx.setFillColor(red: 0, green: 0, blue: 1, alpha: 1)
+            ctx.fill(CGRect(x: 0, y: 0, width: 100, height: 100))
+        }
+        let png = AppIconImageProcessor.normalizeSquarePNG(from: input)
+        #expect(png != nil)
+        let sampled = png.flatMap { decodeAndSample($0, x: 412, y: 412) }
+        #expect(sampled?.width == 824)
+        #expect(sampled?.height == 824)
+        #expect(sampled?.pixel == RGBA(r: 0, g: 0, b: 255, a: 255))
+    }
+
+    @Test func normalizeLandscapeCropsCenterSquare() {
+        // 横長 300×100: 左赤・中央緑・右青 → 中央正方形(緑)のみ残る
+        let input = makeImageData(width: 300, height: 100) { ctx in
+            ctx.setFillColor(red: 1, green: 0, blue: 0, alpha: 1)
+            ctx.fill(CGRect(x: 0, y: 0, width: 100, height: 100))
+            ctx.setFillColor(red: 0, green: 1, blue: 0, alpha: 1)
+            ctx.fill(CGRect(x: 100, y: 0, width: 100, height: 100))
+            ctx.setFillColor(red: 0, green: 0, blue: 1, alpha: 1)
+            ctx.fill(CGRect(x: 200, y: 0, width: 100, height: 100))
+        }
+        let png = AppIconImageProcessor.normalizeSquarePNG(from: input)
+        #expect(png != nil)
+        let leftEdge = png.flatMap { decodeAndSample($0, x: 20, y: 412) }
+        let center = png.flatMap { decodeAndSample($0, x: 412, y: 412) }
+        let rightEdge = png.flatMap { decodeAndSample($0, x: 804, y: 412) }
+        #expect(center?.width == 824)
+        #expect(center?.height == 824)
+        #expect(leftEdge?.pixel == RGBA(r: 0, g: 255, b: 0, a: 255))
+        #expect(center?.pixel == RGBA(r: 0, g: 255, b: 0, a: 255))
+        #expect(rightEdge?.pixel == RGBA(r: 0, g: 255, b: 0, a: 255))
+    }
+
+    @Test func normalizePortraitCropsCenterSquare() {
+        // 縦長 100×300: 下赤・中央緑・上青(CGContext座標) → 中央正方形(緑)のみ残る
+        let input = makeImageData(width: 100, height: 300) { ctx in
+            ctx.setFillColor(red: 1, green: 0, blue: 0, alpha: 1)
+            ctx.fill(CGRect(x: 0, y: 0, width: 100, height: 100))
+            ctx.setFillColor(red: 0, green: 1, blue: 0, alpha: 1)
+            ctx.fill(CGRect(x: 0, y: 100, width: 100, height: 100))
+            ctx.setFillColor(red: 0, green: 0, blue: 1, alpha: 1)
+            ctx.fill(CGRect(x: 0, y: 200, width: 100, height: 100))
+        }
+        let png = AppIconImageProcessor.normalizeSquarePNG(from: input)
+        #expect(png != nil)
+        let topEdge = png.flatMap { decodeAndSample($0, x: 412, y: 20) }
+        let center = png.flatMap { decodeAndSample($0, x: 412, y: 412) }
+        let bottomEdge = png.flatMap { decodeAndSample($0, x: 412, y: 804) }
+        #expect(center?.width == 824)
+        #expect(center?.height == 824)
+        #expect(topEdge?.pixel == RGBA(r: 0, g: 255, b: 0, a: 255))
+        #expect(center?.pixel == RGBA(r: 0, g: 255, b: 0, a: 255))
+        #expect(bottomEdge?.pixel == RGBA(r: 0, g: 255, b: 0, a: 255))
+    }
+
+    @Test func normalizeAppliesExifOrientation6BeforeCropping() {
+        // 生ピクセルは横長 300×100、EXIF orientation=6 (90°CW → 正立時は縦長 100×300)。
+        // 生の中央1/3(x: 100..<200)の上半分(y: 50..<100)を緑、下半分(y: 0..<50)を青にする。
+        // 90°CW で正立させると、生の上半分が正立の右半分へ、生の下半分が正立の左半分へ写る。
+        // TIFF 形式で書き出すことで EXIF orientation タグを確実に保持する。
+        let input = makeImageData(width: 300, height: 100, orientation: .right, type: "public.tiff") { ctx in
+            ctx.setFillColor(red: 1, green: 0, blue: 0, alpha: 1)
+            ctx.fill(CGRect(x: 0, y: 0, width: 300, height: 100))
+            ctx.setFillColor(red: 0, green: 1, blue: 0, alpha: 1)
+            ctx.fill(CGRect(x: 100, y: 50, width: 100, height: 50))
+            ctx.setFillColor(red: 0, green: 0, blue: 1, alpha: 1)
+            ctx.fill(CGRect(x: 100, y: 0, width: 100, height: 50))
+        }
+        let png = AppIconImageProcessor.normalizeSquarePNG(from: input)
+        #expect(png != nil)
+        let leftHalf = png.flatMap { decodeAndSample($0, x: 200, y: 412) }
+        let rightHalf = png.flatMap { decodeAndSample($0, x: 624, y: 412) }
+        #expect(leftHalf?.width == 824)
+        #expect(leftHalf?.height == 824)
+        #expect(leftHalf?.pixel == RGBA(r: 0, g: 0, b: 255, a: 255))
+        #expect(rightHalf?.pixel == RGBA(r: 0, g: 255, b: 0, a: 255))
+    }
+
+    @Test func normalizePreservesTransparency() {
+        let input = makeImageData(width: 100, height: 100) { ctx in
+            ctx.clear(CGRect(x: 0, y: 0, width: 100, height: 100))
+            ctx.setFillColor(red: 1, green: 0, blue: 0, alpha: 1)
+            ctx.fill(CGRect(x: 25, y: 25, width: 50, height: 50))
+        }
+        let png = AppIconImageProcessor.normalizeSquarePNG(from: input)
+        #expect(png != nil)
+        let corner = png.flatMap { decodeAndSample($0, x: 10, y: 10) }
+        let center = png.flatMap { decodeAndSample($0, x: 412, y: 412) }
+        #expect(corner?.pixel.a == 0)
+        #expect(center?.pixel == RGBA(r: 255, g: 0, b: 0, a: 255))
+    }
+
+    @Test func normalizeRejectsEmptyOrInvalidData() {
+        #expect(AppIconImageProcessor.normalizeSquarePNG(from: Data()) == nil)
+        #expect(AppIconImageProcessor.normalizeSquarePNG(from: Data("not an image".utf8)) == nil)
+        let valid = makeImageData(width: 10, height: 10) { ctx in
+            ctx.setFillColor(red: 1, green: 1, blue: 1, alpha: 1)
+            ctx.fill(CGRect(x: 0, y: 0, width: 10, height: 10))
+        }
+        #expect(AppIconImageProcessor.normalizeSquarePNG(from: valid, targetSize: 0) == nil)
+        #expect(AppIconImageProcessor.normalizeSquarePNG(from: valid, targetSize: -1) == nil)
     }
 }
