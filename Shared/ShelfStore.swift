@@ -43,6 +43,14 @@ final class ShelfStore: ObservableObject {
     /// アートワークは全シェルフで共有するためキャッシュもstatic共有。
     private static var imageCache: [String: NSImage] = [:]
 
+    #if DEBUG
+    /// 展示モード中に退避しておく本物の登録データ。
+    /// 展示モード終了時にそのまま復帰させ、albums.json / Artwork/ を一切汚さない。
+    private var savedProductionEntries: [MediaEntry] = []
+    /// このストアが現在展示モードで動作中か
+    private var isShowcaseActive = false
+    #endif
+
     init(shelfID: String) {
         self.shelfID = shelfID
         Self.ensureDirectories(shelfID)
@@ -54,13 +62,56 @@ final class ShelfStore: ObservableObject {
         // 空きスロットへ割り当て、slotIndex昇順に並べる。
         // 変更があった場合だけalbums.jsonを即座に保存する
         let normalized = ShelfPlacement.normalized(Self.readFromDisk(shelfID: shelfID))
+        #if DEBUG
+        if ShowcaseMode.shared.isEnabled {
+            savedProductionEntries = normalized.entries
+            isShowcaseActive = true
+            let dir = ShowcaseCatalog.resolveMaterialsDirectory()
+            entries = ShowcaseCatalog.loadEntries(from: dir)
+            Self.logger.notice("shelf initialized in showcase mode: shelf=\(shelfID, privacy: .public) showcaseEntries=\(self.entries.count, privacy: .public) preservedProduction=\(self.savedProductionEntries.count, privacy: .public)")
+        } else {
+            entries = normalized.entries
+            if normalized.changed {
+                Self.logger.notice("slotIndex normalized: shelf=\(shelfID, privacy: .public) entries=\(self.entries.count, privacy: .public) slots=\(self.entries.map(\.slotIndex).description, privacy: .public) — migrated albums.json saved")
+                save()
+            }
+            ensureArtworkDownloaded()
+        }
+        #else
         entries = normalized.entries
         if normalized.changed {
             Self.logger.notice("slotIndex normalized: shelf=\(shelfID, privacy: .public) entries=\(self.entries.count, privacy: .public) slots=\(self.entries.map(\.slotIndex).description, privacy: .public) — migrated albums.json saved")
             save()
         }
         ensureArtworkDownloaded()
+        #endif
     }
+
+    #if DEBUG
+    /// 展示モードへ切り替える。現在の本物データをメモリ上に退避し、
+    /// `Docs/materials/` の画像から生成した展示用エントリへ差し替える。
+    /// `albums.json` や `Artwork/` には一切触れない。
+    func enterShowcaseMode() {
+        guard !isShowcaseActive else { return }
+        savedProductionEntries = entries
+        isShowcaseActive = true
+        let dir = ShowcaseCatalog.resolveMaterialsDirectory()
+        entries = ShowcaseCatalog.loadEntries(from: dir)
+        artworkRevision += 1
+        Self.logger.notice("shelf entered showcase mode: shelf=\(self.shelfID, privacy: .public) showcaseEntries=\(self.entries.count, privacy: .public) preservedProduction=\(self.savedProductionEntries.count, privacy: .public)")
+    }
+
+    /// 展示モードを終了し、退避していた本物データをそのまま復帰する。
+    func exitShowcaseMode() {
+        guard isShowcaseActive else { return }
+        isShowcaseActive = false
+        entries = savedProductionEntries
+        savedProductionEntries = []
+        artworkRevision += 1
+        Self.logger.notice("shelf exited showcase mode: shelf=\(self.shelfID, privacy: .public) restoredProduction=\(self.entries.count, privacy: .public)")
+        ensureArtworkDownloaded()
+    }
+    #endif
 
     // MARK: - ストレージ
 
@@ -126,7 +177,12 @@ final class ShelfStore: ObservableObject {
     }
 
     nonisolated static func artworkFileURL(for entry: MediaEntry) -> URL {
-        artworkDirectory.appendingPathComponent("\(entry.id).jpg")
+        #if DEBUG
+        if let showcaseURL = ShowcaseCatalog.localArtworkURL(for: entry) {
+            return showcaseURL
+        }
+        #endif
+        return artworkDirectory.appendingPathComponent("\(entry.id).jpg")
     }
 
     nonisolated static func readFromDisk(shelfID: String) -> [MediaEntry] {
@@ -176,6 +232,12 @@ final class ShelfStore: ObservableObject {
     /// atSlotを渡すと先頭の空きではなくそのスロットへ挿入する(ドロップ位置への
     /// 直接挿入。append→moveだと末尾に一瞬出てから滑るのが見えるため)
     func addFromCatalog(_ parsed: MediaURLParser.Parsed, atSlot s: Int? = nil) async throws -> AddOutcome {
+        #if DEBUG
+        if isShowcaseActive {
+            Self.logger.notice("addFromCatalog ignored in showcase mode: id=\(parsed.id, privacy: .public)")
+            return .full
+        }
+        #endif
         guard !contains(parsed.id, provider: parsed.provider) else {
             Self.logger.notice("addFromCatalog: duplicate id=\(parsed.id, privacy: .public)")
             return .duplicate
@@ -207,6 +269,12 @@ final class ShelfStore: ObservableObject {
     /// 押し出されるのは既存エントリであり slotIndex >= capacity の
     /// 「登録保持・非表示」ルールで扱える)
     func registerFetched(_ entry: MediaEntry, atSlot s: Int? = nil) -> AddOutcome {
+        #if DEBUG
+        if isShowcaseActive {
+            Self.logger.notice("registerFetched ignored in showcase mode: id=\(entry.id, privacy: .public)")
+            return .full
+        }
+        #endif
         guard !contains(entry.id, provider: entry.provider) else {
             Self.logger.notice("registerFetched: duplicate id=\(entry.id, privacy: .public)")
             return .duplicate
@@ -268,6 +336,12 @@ final class ShelfStore: ObservableObject {
         // 削除したエントリのデコード済み画像もキャッシュから落とす
         // (同じIDを後で追加し直した場合に古い画像が残らないように)
         Self.imageCache.removeValue(forKey: id)
+        #if DEBUG
+        if isShowcaseActive {
+            Self.logger.notice("showcase entry removed (in-memory only): shelf=\(self.shelfID, privacy: .public) id=\(id, privacy: .public) remaining=\(self.entries.count, privacy: .public)")
+            return
+        }
+        #endif
         // 参照されなくなったアートワークファイルも消す。
         // ただしアートワークは全シェルフ共有なので、他のシェルフが
         // 同じエントリを持っている場合は残す(再追加時はdownloadArtworkが取り直す)
@@ -280,6 +354,12 @@ final class ShelfStore: ObservableObject {
     }
 
     private func save() {
+        #if DEBUG
+        if isShowcaseActive {
+            Self.logger.debug("save skipped in showcase mode: shelf=\(self.shelfID, privacy: .public)")
+            return
+        }
+        #endif
         do {
             let data = try JSONEncoder().encode(entries)
             try data.write(to: Self.albumFile(shelfID), options: .atomic)
@@ -352,6 +432,11 @@ final class ShelfStore: ObservableObject {
     /// ネットワーク取得+ファイル書き込みをメインアクター外で行うため nonisolated。
     nonisolated static func downloadArtwork(for entry: MediaEntry) async throws -> URL {
         let destination = artworkFileURL(for: entry)
+        #if DEBUG
+        if ShowcaseCatalog.isShowcaseEntry(entry) {
+            return destination
+        }
+        #endif
         if FileManager.default.fileExists(atPath: destination.path) { return destination }
 
         guard !entry.artworkURL.isEmpty, let url = URL(string: entry.artworkURL) else {
@@ -366,6 +451,9 @@ final class ShelfStore: ObservableObject {
     /// このクラスは@MainActorなのでTask内もメインアクターで走り、
     /// ネットワーク取得(nonisolated)のawait中だけメインを離れる。
     func ensureArtworkDownloaded() {
+        #if DEBUG
+        if isShowcaseActive { return }
+        #endif
         Task {
             var downloadedAny = false
             for entry in entries {

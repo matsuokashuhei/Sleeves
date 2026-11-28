@@ -148,6 +148,20 @@ final class ShelfManager: ObservableObject {
             .contains { $0.entries.contains { $0.provider == .spotify } }
     }
 
+    #if DEBUG
+    /// 展示モードのON/OFF切替を生成済みの全シェルフストアへ即座に反映する。
+    func applyShowcaseModeChange(enabled: Bool) {
+        Self.logger.notice("applying showcase mode change to stores: enabled=\(enabled, privacy: .public) count=\(self.stores.count, privacy: .public)")
+        for store in stores.values {
+            if enabled {
+                store.enterShowcaseMode()
+            } else {
+                store.exitShowcaseMode()
+            }
+        }
+    }
+    #endif
+
     // MARK: - 永続化・マイグレーション
 
     private static var registryFile: URL {

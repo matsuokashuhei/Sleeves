@@ -47,6 +47,7 @@ targets:
       # テスト対象の純ロジックだけ取り込む(アプリ本体をホストにしない)
       - Shared/MediaEntry.swift
       - Shared/AppIconImageProcessor.swift
+      - Shared/ShowcaseCatalog.swift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.cacheandbuffer.Sleeves.tests

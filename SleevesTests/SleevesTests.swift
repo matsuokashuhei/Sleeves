@@ -935,3 +935,94 @@ struct AppIconImageProcessorTests {
         #expect(AppIconImageProcessor.normalizeSquarePNG(from: valid, targetSize: -1) == nil)
     }
 }
+
+#if DEBUG
+struct ShowcaseCatalogTests {
+
+    @Test func defaultDirectoryResolvesRepoDocsMaterialsAndLoadsSortedImages() {
+        let dir = ShowcaseCatalog.defaultMaterialsDirectory()
+        #expect(dir.lastPathComponent == "materials")
+        #expect(dir.deletingLastPathComponent().lastPathComponent == "Docs")
+
+        let entries = ShowcaseCatalog.loadEntries(from: dir)
+        #expect(entries.count == 18)
+        #expect(entries.first?.id == "showcase:01_jazz_midnight_corridor.jpg")
+        #expect(entries.first?.slotIndex == 0)
+        #expect(entries.last?.id == "showcase:18_rnb_warm_honey.jpg")
+        #expect(entries.last?.slotIndex == 17)
+        for (i, entry) in entries.enumerated() {
+            #expect(entry.slotIndex == i)
+            #expect(ShowcaseCatalog.isShowcaseEntry(entry))
+            let fileURL = ShowcaseCatalog.localArtworkURL(for: entry)
+            #expect(fileURL != nil)
+            #expect(fileURL?.isFileURL == true)
+            #expect(FileManager.default.fileExists(atPath: fileURL?.path ?? ""))
+        }
+    }
+
+    @Test func resolveMaterialsDirectoryRespectsEnvOverride() {
+        let custom = "/tmp/custom-showcase-dir"
+        let resolved = ShowcaseCatalog.resolveMaterialsDirectory(
+            environment: [ShowcaseCatalog.directoryEnvKey: custom]
+        )
+        #expect(resolved.path == custom)
+
+        let whitespaceOnly = ShowcaseCatalog.resolveMaterialsDirectory(
+            environment: [ShowcaseCatalog.directoryEnvKey: "   "]
+        )
+        #expect(whitespaceOnly.path == ShowcaseCatalog.defaultMaterialsDirectory().path)
+    }
+
+    @Test func loadEntriesFiltersExtensionsAndSortsAscending() throws {
+        let tmpDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("sleeves-showcase-test-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tmpDir) }
+
+        let filenames = [
+            "03_cover.PNG",
+            "01_cover.jpg",
+            "02_cover.jpeg",
+            "README.md",
+            ".hidden.jpg",
+            "notes.txt",
+        ]
+        for name in filenames {
+            try Data([0x00]).write(to: tmpDir.appendingPathComponent(name))
+        }
+
+        let entries = ShowcaseCatalog.loadEntries(from: tmpDir)
+        #expect(entries.map(\.id) == [
+            "showcase:01_cover.jpg",
+            "showcase:02_cover.jpeg",
+            "showcase:03_cover.PNG",
+        ])
+        #expect(entries.map(\.slotIndex) == [0, 1, 2])
+        #expect(entries.map(\.title) == ["01_cover", "02_cover", "03_cover"])
+    }
+
+    @Test func loadEntriesReturnsEmptyForMissingDirectory() {
+        let missing = FileManager.default.temporaryDirectory
+            .appendingPathComponent("sleeves-nonexistent-\(UUID().uuidString)", isDirectory: true)
+        let entries = ShowcaseCatalog.loadEntries(from: missing)
+        #expect(entries.isEmpty)
+    }
+
+    @Test func localArtworkURLReturnsNilForNonShowcaseEntry() {
+        let real = MediaEntry(
+            kind: .album,
+            provider: .appleMusic,
+            id: "1440842296",
+            title: "Brown Sugar",
+            artist: "D'Angelo",
+            country: "jp",
+            url: "https://music.apple.com/jp/album/brown-sugar/1440842296",
+            artworkURL: "file:///tmp/fake.jpg",
+            addedAt: Date(timeIntervalSince1970: 0),
+            slotIndex: 0
+        )
+        #expect(!ShowcaseCatalog.isShowcaseEntry(real))
+        #expect(ShowcaseCatalog.localArtworkURL(for: real) == nil)
+    }
+}
+#endif
