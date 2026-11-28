@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Store Shelf の壁用の紙テクスチャを生成する。
 
-生成物は Sleeves/Assets.xcassets/paper-<variant>.imageset/ に書き出す。
+生成物は apps/macos/Sleeves/Assets.xcassets/paper-<variant>.imageset/ に書き出す。
 テクスチャは texture-generator (https://github.com/nmpowell/texture-generator)
 の paper バリアントを使う。creases=0.0 にするとシームレスにタイルできる
 (生成されるすべてのフィールドが周期化される)。
@@ -11,7 +11,7 @@
     # Python 3.12+ が必要
     python3 -m venv .venv-texture
     .venv-texture/bin/pip install texture-generator
-    .venv-texture/bin/python tools/generate-paper-textures.py
+    .venv-texture/bin/python scripts/generate-paper-textures.py
 
 実行すると各 imageset の PNG を上書きする(Contents.json は上書きしない)。
 seed を固定してあるので同じバージョンなら同じ画像が再現できる。
@@ -23,7 +23,7 @@ from pathlib import Path
 from texture_generators import generate
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-ASSETS = REPO_ROOT / "Sleeves" / "Assets.xcassets"
+ASSETS = REPO_ROOT / "apps" / "macos" / "Sleeves" / "Assets.xcassets"
 
 # 1024px のタイルを @2x アセットにして 512pt 幅で敷き詰める。
 # mm_across は紙ごとの描画範囲(reference.md)の上限側に固定して、

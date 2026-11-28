@@ -1,843 +1,95 @@
-# AGENTS.md — Sleeves(レコードシェルフ)開発メモ
+# AGENTS.md — Sleeves(レコードシェルフ)開発ガイド
 
 ## このプロジェクト
 
-macOSアプリ。Apple Musicのアルバム/プレイリスト20個を壁のレコードシェルフ風に
-表示し、クリックで再生する。
+macOS アプリおよびランディングページを管理するモノレポ。Apple Music / Spotify のアルバム・プレイリストを壁のレコードシェルフ風に自由配置（スパース・可変グリッド・複数シェルフ対応）し、クリックで再生する。
 
-## 鉄則(必ず守る)
+## 鉄則（必ず守る）
 
 ### 1. ロギングは必須
 
-エージェントは**UIを目視できない**。ユーザーの操作結果はすべてログで判断する。
-そのため以下は必須:
+エージェントは UI をリアルタイムに操作・目視できないため、動作判断の第一情報源はログとする（見た目確認が必要な場合は `sleeves-local-verification` スキルの `screencapture` / CLI プレビューを使う）。
 
-- すべてのUIアクション(ボタンクリック、追加フロー、クリップボード操作など)に
-  `os.Logger` を仕込む(subsystem: `com.cacheandbuffer.Sleeves`)
-- 非同期処理・外部プロセス実行・エラー経路には必ず開始/成功/失敗のログを出す
-- 新しいファイル・新しい機能を書くとき、最初からログを入れる(後で足すのを忘れない)
-- ログ出力例: `Logger(subsystem: "com.cacheandbuffer.Sleeves", category: "UI")`
-- 文字列補間は `\(value, privacy: .public)` にして `log show` で読めるようにする
+- すべての UI アクション（ボタンクリック、追加フロー、クリップボード操作等）に `os.Logger` を仕込む（subsystem: `com.cacheandbuffer.Sleeves`）
+- 非同期処理・外部プロセス実行・エラー経路には必ず開始／成功／失敗のログを出す
+- 新規ファイル・新機能は実装時からログを入れる
+- 例: `Logger(subsystem: "com.cacheandbuffer.Sleeves", category: "UI")`
+- 文字列補間は `\(value, privacy: .public)` を指定し、`log show` で読めるようにする
 
 ### 2. ユーザーに操作を依頼したら、ログは自分で監視・分析する
 
-- ユーザーに操作を頼んだら、その後 `log show` / `log stream` で状況を
-  **自分で取得して判断する**。エラーメッセージの転記などをユーザーに頼まない
-- 操作を依頼 → ログ監視 → 自分で結論 → 次の手を打つ、のサイクルを回す
+- ユーザーへ操作を依頼したら、`log show` / `log stream` で結果を**自分で取得して判断する**（エラーメッセージの転記をユーザーに頼まない）
+- 操作依頼 → ログ監視 → 原因判断 → 次のアクション、のサイクルを回す
 
 ### 3. ファイルを追加・削除したら xcodegen を再実行
 
-新しいSwiftファイルは `xcodegen generate` し直さないとターゲットに含まれない。
+新しい Swift ファイルの追加・削除・リネーム後は必ず `make gen`（`apps/macos` で `xcodegen generate`）を実行する（`project.pbxproj` の直編集は禁止）。
 
 ### 4. スキルは `.agents/skills/` に作成する
 
-新しいスキル(SKILL.md)は `.agents/skills/<name>/SKILL.md` に置く。
-`.devin/skills/` には置かない(既存スキルもすべて `.agents/skills/` にある)。
+新しいスキル（`SKILL.md`）は `.agents/skills/<name>/SKILL.md` に置く。`.devin/skills/` には置かない。
 
-### 5. 実装したら必ず builder-reviewer-loop を回す
+### 5. コード実装したら必ず `builder-reviewer-loop` を回す
 
-コード実装(自分で書いた場合も含む)の完了前に、必ず
-`.agents/skills/builder-reviewer-loop` のレビューゲートを通す
-(ユーザー指示 — 2026-11-08)。自分で実装した場合でも、レビュアー
-(subagent_explore)による要件・ルール照合と実機検証の手順は省略しない。
+コード実装（自分で書いた場合も含む）の完了前に、必ず `.agents/skills/builder-reviewer-loop` のレビューゲートを通す（ユーザー指示）。読み取り専用レビュアーによる要件・ルール照合と実機検証の手順は省略しない。
 
 ### 6. 作業が完了したら必ずアプリを起動する
 
-タスク完了時は毎回、新ビルドのアプリを起動しておく
-(ユーザー指示 — 2026-11-14)。手順は下の「起動」コメントの通り
-(必ず pkill してから open)。
+コード変更を伴うタスクの完了時は毎回、新ビルドのアプリを起動しておく（`make run`、または必ず `pkill` してから `open`）。
 
-## ビルド・起動コマンド
+## ビルド・起動・基本コマンド
+
+ルートの `Makefile` から実行できる:
 
 ```bash
-# プロジェクト生成(Xcodeプロジェクトはxcodegenで管理。pbxproj直編集しない)
-DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodegen generate
+make gen     # Xcodeプロジェクト生成 (cd apps/macos && DEVELOPER_DIR=... xcodegen generate)
+make build   # Debug ビルド (-project apps/macos/Sleeves.xcodeproj -derivedDataPath .build)
+make test    # 単体テスト実行 (SleevesTests)
+make run     # 起動 (pkill -x Sleeves してから open .build/Build/Products/Debug/Sleeves.app)
+make logs    # 直近5分のログ取得 (subsystem == "com.cacheandbuffer.Sleeves")
 
-# ビルド
-DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild \
-  -project Sleeves.xcodeproj -scheme Sleeves -configuration Debug \
-  -derivedDataPath .build build
-
-# 起動(/Applications にはインストールしないこと — ユーザー指示)
-# 注意: open は起動中のインスタンスを再表示するだけで新ビルドを起動しない。
-# 必ず pkill で旧プロセスを落としてから open すること(旧バイナリで
-# 検証したつもりになる事故が実際に起きた — 2026-10-24)
-pkill -x Sleeves; open .build/Build/Products/Debug/Sleeves.app
-
-# CLI検証(UIを触らずMusicKit取得/再生を試す。結果はログへ)
-.build/Build/Products/Debug/Sleeves.app/Contents/MacOS/Sleeves \
-  --catalog-test "https://music.apple.com/jp/album/brown-sugar/1440842296" [--play]
-
-# ログ取得
-/usr/bin/log show --last 5m --style compact --info \
-  --predicate 'subsystem == "com.cacheandbuffer.Sleeves"'
+# 初回 / clone 後のエージェントプラグイン導入（cursor-team-kit / pstack）
+bash .agents/plugins/install-cursor-plugins.sh
 ```
 
-- `xcode-select` はCLT向きなので、xcodebuild/xcodegenには必ず `DEVELOPER_DIR` を付ける
-- テストで音を出すときは事前に音量を0にし、終わったら戻す
-- JSONの解析にはpythonではなく `jq` を使う(ユーザー指示)
-- appの場所を移すとLaunch Services登録が壊れることがある → `lsregister -f <app>` で復旧できる(実測)
+- `/Applications` にはインストールしない（ユーザー指示）
+- `xcode-select` は CLT 向きのため、`xcodebuild` / `xcodegen` を直接叩くときは必ず `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer` を付ける
+- テストで音を出すときは事前にシステム音量を 0 にし、終了後に戻す
+- JSON 解析には python ではなく `jq` を使う（ユーザー指示）
+- アプリの場所を移すと Launch Services 登録が壊れることがある → `lsregister -f <app>` で復旧
 
-## アーキテクチャと検証済み事実(2026-10-18 実機)
+## 絶対に踏んではいけない地雷（要点）
 
-- **アルバムの再生**: `shortcuts://run-shortcut?name=<enc>&input=<アルバムURL>` を
-  `/usr/bin/open` で開く → ユーザーのショートカット「Sleeves Playback」
-  (音楽を再生アクションの音楽パラメータにShortcut Input)がMusicアプリでカタログ再生
-- **プレイリストの再生**: ショートカットの「音楽を再生」はプレイリストURLを解決できない
-  (実測)。MusicKit `ApplicationMusicPlayer` で本アプリ内再生する
-  (`ApplicationMusicPlayer.Queue(for: [playlist])`、PlaylistはPlayableMusicItem適合)
-- **macOSのMusicKitに `SystemMusicPlayer` は存在しない**(iOS専用。`@available(macOS, unavailable)`)
-- `music://` ディープリンクは再生せずページを開くだけ(3形式で実測)
-- レコード削除は右クリック。SwiftUIの`.contextMenu`はセルの`.onTapGesture`と
-  競合してレコード上で開かないため、`NSEvent.addLocalMonitorForEvents`で
-  右クリックを拾ってNSMenuを出す(下の「右上ツールバーと右クリックメニュー」参照)。
-  確認アラートを経て削除する(実機確認済み)。確認は
-  `DeleteConfirmationDialog`(NSPanel+SwiftUIのカスタムダイアログ。
-  NSAlertはaccessoryViewがボタン行の上に固定でチェックを最下部へ
-  置けないため自前化)方式で、ShelfView.confirmDelete(_:)から
-  NSApp.runModal(for:)でモーダル表示する。Return=Delete、
-  Escape=Cancel(.keyboardShortcutの.defaultAction/.cancelAction)。
-  チェックはトグルごとにsettings.confirmDeleteへ即時保存。
-  `ShelfSettings.confirmDelete`(既定true、settings.jsonキー
-  "confirmDelete")がfalseなら確認を出さず即削除する
-- **レコードの配置は自由配置(スパース)モデル**(2026-11-03)。各MediaEntryが
-  永続化プロパティ `slotIndex`(0始まりの行優先index、albums.jsonに保存、
-  デフォルト-1=未配置)を持ち、その値がそのままグリッド位置になる。
-  途中に空きスロットがあってよい。旧フォーマット(キー無し)・重複・
-  衝突は読み込み時に `ShelfPlacement.normalized` がファイル順のまま
-  先頭の空きスロットへ割り当て(=旧密配置と同じ見え方)、変更があった
-  場合だけalbums.jsonへ即座に保存する。entries配列は常にslotIndex昇順。
-  スロット計算の純ロジックは `Shared/MediaEntry.swift` の
-  `enum ShelfPlacement`(normalized/paddedSlots/firstEmptySlot/place/
-  reorder/insertionShift/slotCenter/nearestEmptySlot/
-  topDragStripHeight)に集約し、
-  SleevesTestsから直接テストしている。
-  - slotIndex >= capacityのエントリは登録を保持したまま非表示
-    (「縮小しても登録は消さない」セマンティクス。グリッドを広げれば
-    同じスロット位置に再び現れる)。
-    ※indexは行優先の通し番号なので、**列数(columns)を変えると同じ
-      slotIndexが別のグリッド位置へ再解釈され配置がリフローする**。
-      行数(rows)の変更はcapacityの増減で、スロット位置は維持されて
-      表示/非表示の枚数だけが変わる
-  - **「満杯」は「[0, capacity)に空きスロットが無い」で判定する**
-    (`ShelfStore.firstEmptySlot` → `ShelfPlacement.firstEmptySlot`。
-     entries.countではない — 非表示エントリが居ても表示上の空きが
-     あれば追加を受理する)
-- レコードの移動はドラッグ&ドロップ。`.onDrag`(開始時にdraggedID記録)
-  + 各セル背面の左右半分に分けた `.dropDestination(for: String.self)` ゾーン。
-  - 空きスロット上: 左右どちらの半分でも `ShelfPlacement.place` で
-    そのスロットに配置(他のレコードは一切動かない)。
-  - 占有セル上: 左=直前/右=直後の順序位置への挿入として
-    `ShelfPlacement.reorder` がスライド再割当てする
-    (占有順序Eと占有スロット位置集合P(不変)を使い、Eからドラッグを
-    外して対象の直前/直後へ挿入後、順序i番目へP[i]を再割当て。
-    間のレコードが1スロットずつスライドし、ギャップの向こうや
-    非表示エントリは動かない。密配置では旧moveと一致)
-  - perform/transferDropはこれらを**シミュレートだけ**呼び、
-    確定は着地時の `ShelfStore.applyPlacement(_:)`(差分ログ+save)
-    — 遅延確定の理由は上のゴースト項参照。着地時はその時点の
-    entriesへ再シミュレートする(飛行中のentries変化で結果を
-    消し飛ばさないため)
-  - 半透明表示(dropTargetOpacity)はisTargeted && willMoveのみ
-    (空きスロット=slotIndexが変わる場合、占有セル=reorderを
-    シミュレートして変化が出る半分のみ)。isTargeted(false)では
-    シミュレーションを走らせず、その半分がセットした分だけ消す
-    (dropTargetAfterで左右の区別を記録。同一スロットの半分間の
-    移動でハイライトが瞬断しない)
-  - 新規レコード(外部テキスト/URL。シェルフ間転送は上の着地確定項参照)の挿入:
-    `registerFetched(atSlot:)` → `ShelfPlacement.insertionShift`。
-    挿入スロットsは占有セルの左半分=index、右半分=index+1
-    (s >= capacityなら最近傍空きスロットへ流す)。s空き=そのまま配置、
-    s占有=連続占有ラン[a,b]を右(+1、要b+1 < capacity)か左(-1、
-    要a>0)へずらして新規をsへ。余白ドロップは
-    `ShelfPlacement.nearestEmptySlot`(ドロップ位置に最も近い空き
-    スロット中心とのユークリッド距離)で着地先を決める
-  - fetch待ちの半透明は `pendingAddSlot`(スロットindex)で管理
-    (着地予定位置そのものをマークする)
-  ドラッグ表示は自前ゴースト(GhostPanel=枠なし透明パネル)に一本化。
-  **ウィンドウ内のNSViewオーバーレイだとポインタがウィンドウ外へ
-  出た瞬間にクリップされてレコードが消える**ため、画面座標で自由に
-  動ける別ウィンドウにする(Musicアプリと同様 — 2026-10-25)。
-  `.onDrag(preview:)`に透明1pxを渡してシステムのドラッグ画像を
-  無効化してある(可視のままだとドロップ時に元位置へ滑り戻る
-  スライドバックが走り二重表示になる — 2026-10-24実測)。
-  - GhostPanel: styleMask=[.borderless,.nonactivatingPanel]、
-    ignoresMouseEvents、level=CGWindowLevelForKey(.draggingWindow)。
-    元ウィンドウの子ウィンドウにする(親が閉じたら一緒に消える)。
-    座標はすべて画面座標(overlayGridPoint等のグリッド座標変換は不要。
-    飛行先だけslotScreenCenterでスロット中心→画面座標に逆変換する)
-  - ゴーストはアプリ全体で1個(GhostController.shared)。
-    シェルフ間ドロップ時はドロップ先がtakeOverで所有権を引き継ぎ、
-    自分の着地スロットへ飛ばしてから実セル(ghostEntryIDで隠す)と
-    交代する(=シェルフ内ドロップと同じ手順。即表示+ゴースト残存で
-    レコードが2個に見えるのを防ぐ — 2026-10-25)。
-    takeOverはポインタ追従(trackingEnabled)も切る — 元シェルフの
-    追従タイマーはモニタ停止まで動き続け、着地フライを上書きして
-    ガタつかせるため。元シェルフは終了検知でghost.ownerを見て、
-    移譲済みならhideしない
-  - 所有権のガードは他に2箇所: startDragのアートワークロード完了時
-    (ロード中にドロップ成立していたらshowしない)と、flyGhostの
-    completion(飛行中にtakeOverされていたらhideしない)。どちらも
-    `ghost.owner == nil || == shelfID`で判定する
-  - ドラッグ元セルはdraggedID/ghostEntryIDの間はopacity 0で非表示。
-    **並び替え/配置の確定は着地時に遅らせる**: perform時点でentriesを
-    変えると、ずれ込むレコードが着地フライ中に見えてゴーストと2個
-    表示される(2026-11-03報告)。performはShelfPlacement.reorder/place/
-    insertionShiftをシミュレートするだけで着地スロットを決め、
-    flyGhostのonLandedでstore.applyPlacementで確定する
-    (シェルフ間転送も同じ: 着地でapplyPlacement+元シェルフremove。
-    先に消すと失敗時にどちらにも無い状態になりうる)
-  - 追従: leftMouseDraggedはドラッグセッションに吸収されてモニタに
-    届かないので、60fpsタイマーでNSEvent.mouseLocationをポーリング
-    (.commonモード登録)。パネルのframeを命令的に動かす
-    ※@Stateで位置を持って毎イベントbody再評価すると、走行中セッション
-      配下のクロージャが破棄されEXC_BAD_ACCESSで繰り返しクラッシュした。
-      ドラッグ中の高頻度なSwiftUI状態更新は禁止(2026-10-24実機)
-  - ドロップ: ゴーストを着地スロット中心へ0.25sで飛ばし、着地で実セルと交代
-  - キャンセル: ゴーストを元スロットへ自前で滑り戻す
-  - 終了検知: onDragに終了コールバック無し。leftMouseUp/mouseMovedの
-    ローカルモニタで検知するが、mouseUpはperformより先に届くので
-    判定は50ms遅延(即判定するとドロップをキャンセル誤認して以降の
-    ドロップが全滅する — 2026-10-24実測)
-  ※NSEvent.mouseLocationのwindow→content座標変換はfullSizeContentView
-    構成のこのウィンドウではYが~280pt狂う。window.frame.heightと
-    contentLayoutRect.heightの差(タイトルバー分)を引く式で変換すること。
-  ※DropDelegate(onDrop)はdropExitedが呼ばれない経路がありハイライトが残った。
-    pressedMouseButtonsポーリングも3本指/タップドラッグでは検知不能。
-    isTargetedはセッション終了時にフレームワークが必ずfalseを送るので
-    状態の手動掃除が要らない構造にした(2026-10-24)
-- 外部ドラッグ(Music等)の画像は **`setDraggingFrame` では大きさを変えられない**
-  (2026-10-25実機): `enumerateDraggingItems` のブロック内で指定すると frame の値は
-  書き換わり読み戻しも一致するが、**描画は元画像の約128pt角のまま**
-  (指定233pt→描画約122pt、指定432pt→約128pt)。`contents` の差し替えだけは反映される。
-  +17pt の固定差補正も ×2 の倍率補正も無効。そのため外部ドラッグのモーフィングは
-  「システム画像を `contents=nil` で隠し、GhostPanel(ウィンドウ内ドラッグと同じ)で
-  描く」方式にしてある(ShelfView.swift の ExternalDropOverlayView)
-- エージェントの動作確認手段: `screencapture -R x,y,w,h` で画面撮影→readで視認、
-  CGEvent(`mouseEventSource` で rightMouseDown/Up をpost)で右クリック合成、
-  System Eventsでウィンドウ位置取得 — すべて動作確認済み(2026-10-24)
-  ※開いたNSMenu内の項目選択は合成クリックでは拾えなかった。
-   メニューが出ること+項目アクションは別々に検証するのが現実的
-  ※2026-10-25実測: 画面収録を許可しても `screencapture -R` は
-   "could not create image from rect" で失敗することがある。全画面 `screencapture -x`
-   は成功するので、実寸計測は全画面を撮って任意ツールでクロップ/差分する
-- Apple Events / `shortcuts run` CLI は **GUIアプリプロセスからspawnすると
-  ショートカット名解決に失敗する**(ターミナルからは成功するのに)。URLスキーム経由なら問題ない
-- `SystemSettings → プライバシーとセキュリティ → オートメーション → Sleeves → Shortcuts Events`
-  をONにしないと、アプリプロセスからのShortcuts Events照会が空リストを返す
-- **Spotify対応**(2026-12-14 実装)。`MediaEntry.provider`
-  (`appleMusic`/`spotify`。後方互換デコードでキー欠落・未知値はappleMusic)で
-  分岐する。`MediaURLParser`は open.spotify.com album/playlist
-  (intl-XX・?si=許容)と `spotify:<kind>:<id>` URIを受理
-  (IDはbase62・長さ緩く検証。track/artist等は拒否)
-  - **再生**: `tell application "Spotify" to play track "spotify:<kind>:<id>"`
-    — アルバムもプレイリストもこれで再生できる(実機検証済み)。
-    停止は同じくAppleScriptの `pause`(is runningガード付き)、
-    監視は `player state` + `album of current track`
-    (PlaybackEngine.spotifyNowPlayingInfo)。
-    プレイリストはAppleScriptからコンテキストが取れないので
-    activeEntryID方式(in-app playlistと同じ)。ポーリングは開いている
-    シェルフにspotifyエントリが居るときだけ(2秒おきosascriptの
-    無駄spawn防止。ShelfManager.anyOpenShelfHasSpotify)
-  - **メタデータ**: 認証不要。oEmbed
-    (`https://open.spotify.com/oembed?url=<canonical>`)でタイトル+
-    サムネイル、ページHTMLの `og:description` からアーティスト名
-    (SpotifyCatalogClient)。`og:description` は " · "(U+00B7)区切りで
-    アルバム=`"Pink Floyd · album · 1973 · 10 songs"`(先頭セグメント)、
-    プレイリスト=`"Playlist · Spotify · 50 items · 33.6M saves"`
-    (先頭が"Playlist"なら2番目、以外は"Spotify")。og失敗時は
-    artist=""で縮退。og:titleは装飾付きなので使わない(oEmbedを正とする)。
-    ※ページは**ブラウザ系User-Agentにはogタグ無しのJSシェルを返す**
-    ので、ページ取得は非ブラウザUA(curl/8.0)が必須(2026-11-21実測)
-  - og解析の純ロジックは `SpotifyPageParser`(Shared/MediaEntry.swift。
-    テストターゲットにコンパイルされる配置)
+- **MusicKit entitlement 禁止**: `com.apple.developer.musickit` は存在しない。entitlements に書くとプロビジョニングエラーになる（App ID の App Services で有効化）。
+- **ドラッグ中の `@State` 高頻度更新禁止**: 走行中セッション配下のクロージャが破棄され `EXC_BAD_ACCESS` でクラッシュする。ゴースト追従は 60fps タイマーで命令的に動かす。
+- **座標・余白・間隔の不変条件**: 余白は `ShelfPluginRegistry.effectivePadding`、ピッチは `effectiveSpacing`、ヒット判定・ドロップ・ゴースト着地は `ShelfView.slotVisualRect` を使う（生の設定値やピッチ位置を読むとプラグイン部材とずれる）。
+- **ジャケット面変形フック**: 3D 回転等の幾何変形は `transformJacket` ではなく `transformJacketSurface` に実装する。
+- **EdDSA 秘密鍵の厳重管理**: Sparkle 更新用秘密鍵をコミット・ログ・PR・スクリーンショットに絶対に出さない。
 
-## ウィンドウの余白と信号ボタン(2026-10-25 実装・実機検証済み)
+## リポジトリ構成
 
-- グリッドの余白は**間隔設定からの導出値**。
-  settings.jsonに永続化されるのは列間隔 `columnSpacing`(既定12、0〜64)と
-  行間隔 `rowSpacing`(既定14、0〜96)の2つだけで、Settings画面の
-  スライダーでtransient更新+400msデバウンスで永続化する。
-  余白は `ShelfSettings` の計算プロパティ: `edgePadding`(左右)
-  =`columnSpacing`、`topPadding`(上端)=`max(4, rowSpacing)`
-  (4pt下限は下のWindowDragStrip帯確保のため)、
-  `bottomPadding`(下端)=`rowSpacing`(上端と違い下限なし。
-  rowSpacing=0では最終行の棚板が0へクランプされるだけ)。
-  旧settings.jsonに
-  `edgePadding`/`topPadding`キーが残っていてもデコード時は
-  未知キーとして無視され、次回保存で消える。
-  コンテンツは `.ignoresSafeArea()` で
-  タイトルバー帯(32pt)の下=ウィンドウ上端まで広げ、信号ボタン
-  (閉じる/最小化)はMusicアプリのミニプレーヤーと同じく
-  1枚目のジャケットの上に重なる
-- **`.windowResizability(.contentSize)` はウィンドウサイズを
-  「ビューの理想サイズ+タイトルバー帯のセーフエリア32pt」で作る**ため、
-  そのままだとウィンドウだけ32pt高くなり下側に余白が残る(実測:
-  グリッド462ptに対しウィンドウ494pt)。ビュー側に `.padding(.bottom, -32)`
-  を足して理想サイズを32pt差し引くと、ウィンドウとグリッドの高さが一致する
-  (描画とヒットテストはグリッド側の実寸フレームが使われる)。
-  32ptは `window.frame.height - window.contentLayoutRect.height` で実測
-  (`WindowConfigurator.logMetrics` が titlebarInset としてログに出す)
-- タイトルバー帯のクリックはコンテンツに届く(themeFrame.hitTestで実測:
-  ジャケット上の帯でもSwiftUIのホスティングビューが返る)。信号ボタン上は
-  `_NSThemeCloseWidget` 等が返るのでボタンも押せる
-- コンテンツが上端まで来るとAppKitのタイトルバードラッグ領域が無くなるため、
-  上辺の余白にAppKitベースの `WindowDragStrip`(`Sleeves/WindowGlass.swift`)を
-  置いて `NSWindow.performDrag(with:)` でウィンドウ移動を確保している
-  (SwiftUIの `WindowDragGesture` は複数シェルフ時に上部ドラッグが効かなくなる
-  ため置換)。`acceptsFirstMouse = true` で非アクティブ窓からでも1回目の
-  クリック&ドラッグで移動でき、右上ツールバー表示中の矩形(`excludedRect`。
-  `ShelfView.toolbarTopLeftRect` を `isOverChrome` と共有)と可視の標準信号ボタン
-  は `hitTest` で `nil` を返して操作を奪わない(Ctrl+クリックもドラッグせず
-  フォールバック)。topPaddingは `max(4, rowSpacing)` の導出値(4pt下限は
-  rowSpacing=0でも帯を残すため、構造プラグインのinsetが加算される)だが、
-  帯の高さは `ShelfPlacement.topDragStripHeight` で算出し、1段目レコードが
-  `slotContentOffset` で上方向(`dy < 0`)へせり上がる場合はレコード上端と
-  重ならない高さまで縮める(0ならオーバーレイ自体を省く)
-- `slotScreenCenter` のグリッド→画面座標変換からタイトルバー帯の控除は不要
-  (グリッド上端=ウィンドウ上端)
+- `apps/macos/` — macOS アプリ（Xcode プロジェクト一式）
+  - `project.yml` — xcodegen 定義（ターゲット変更はここを編集）
+  - `Sleeves/` — アプリ本体（`SleevesApp.swift`, `ShelfView.swift`, `SettingsView.swift`, `ShelfShareView.swift`, `WindowGlass.swift`, `DeleteConfirmationDialog.swift`, `PlaybackMonitor.swift`, `UpdateController.swift`, `AppIconManager.swift`, `Plugins/`, `Localizable.xcstrings`, `InfoPlist.xcstrings`, `Info.plist`）
+  - `Shared/` — アプリとテストにリンクされる共有層（`MediaEntry.swift`, `MediaCatalogClient.swift`, `SpotifyCatalogClient.swift`, `PlaybackEngine.swift`, `PlaylistPlayer.swift`, `ShortcutInstaller.swift`, `ShelfManager.swift`, `ShelfStore.swift`, `ShelfSettings.swift`, `ShelfPluginModel.swift`, `AppIconImageProcessor.swift`, `ShowcaseCatalog.swift`, `ShowcaseMode.swift`）
+  - `SleevesTests/` — 単体テスト
+- `apps/web/` — Mac App Store 向けランディングページ（`site/`, `nginx.conf`, `README.md`）
+- `docs/` — ドキュメント（`architecture/` 設計メモ、`legal/` 法務文書）
+- `assets/` — 画像・デザイン素材（`design/`, `icons/`, `showcase/`, `screenshots/`）
+- `scripts/` — 生成・運用スクリプト（`generate-paper-textures.py`）
+- `Makefile` — ルートから macOS アプリの生成・ビルド・テスト・起動・ログ取得を行うラッパー
 
-## 右上ツールバーと右クリックメニュー(2026-10-25)
+## 詳細ドキュメント & スキル参照先
 
-- シェルフ操作は**右上のカプセル型ツールバー**(Musicアプリのウィンドウ右上と
-  同じ「共有+3点リーダー」)に集約した。共有は表示のみ(実装は別途)、
-  3点リーダー(SwiftUIの`Menu`)で New Shelf / Settings… / Delete Shelf… を出す
-- **タイトルバー(信号ボタン)と右上ツールバーは自動で出し入れする**
-  (`ChromeVisibilityController`): ウィンドウがアクティブな状態で
-  マウスが動いたら表示、**3秒間動かない/ウィンドウが非アクティブ**なら非表示。
-  mouseMovedは毎フレーム届くので、隠しタイマーの張り直しは250msに間引く。
-  `window.acceptsMouseMovedEvents = true`が無いとmouseMovedが来ない
-  (WindowConfigurator.configureで設定)。メニュー表示中(`NSMenu`の
-  didBegin/didEndTracking)とアラート表示中(SwiftUIアラート=
-  `hasModalAlert`のonChange、レコード削除確認パネル=
-  `confirmDelete(_:)`内の手動呼び出し)は`setHold(_:active:)`で
-  アイドル隠しタイマーを止め、閉じたら3秒を数え直す
-  (メニューを開いたままカプセルが消えるのを防ぐ)
-- 信号ボタンの表示は`WindowConfigurator.updateTrafficLightVisibility(_:visible:)`に
-  統合し、呼び出し側が「キー状態 && chrome表示中」を渡す
-- 信号ボタンは**Apple標準のNSWindowボタン**(`_NSThemeCloseWidget` /
-  `_NSThemeWidget` / `_NSThemeZoomWidget`)。ズームは固定サイズで意味がないため
-  常に非表示(閉じる/最小化のみ)
-- 信号ボタンは標準位置(左上9pt)から**4pt内側の13ptへ寄せる**
-  (`applyTrafficLightInset`。ガラス/ツールバーの枠との余白を揃えるため)。
-  AppKitがタイトルバーをレイアウトし直すと標準位置へ戻るので、
-  `NSWindow.didUpdateNotification` で毎回冪等に再適用する。位置を実際に
-  書き換えたときだけ `traffic light repositioned: count=N` をログに出す
-  (chromeの表示切替時などに数回出るだけで止まる=収束する)
-- **Liquid Glass**: 信号ボタンの背面と右上ツールバーに適用する
-  - 信号ボタン: `NSGlassEffectView`(ヒットテストはnil)をコンテンツビューへ
-    追加し、閉じる/最小化の外接矩形+5ptの角丸カプセルを背面に敷く
-    (`WindowConfigurator.View.updateTrafficLightGlass`)
-  - 右上ツールバー: SwiftUIの `.glassEffect(.regular.tint(.black.opacity(0.45)).interactive(), in: Capsule())`
-  - 2つのガラスの染め方を揃える: 信号ボタン側は `NSGlassEffectView.tintColor`
-    に同じ `.black.opacity(0.45)` を入れる(白アイコンを明るいジャケット上でも読ませる)
-  - `GlassEffectContainer`(AppKitでは`NSGlassEffectContainerView`)は使わない。
-    融合させたいガラスが左上と右上に離れており、片方はAppKitレイヤーなので
-    まとめる意味がない
-  - 右上カプセル: 上8pt / 右18pt / 高さ24pt / アイコン14pt。
-    **信号ボタンの中心(13+14/2=20pt)とカプセルの中心(8+24/2=20pt)を
-    揃える**ため、上8pt・高さ24ptにしてある。
-    信号ボタンのガラスも外接矩形+5pt(=左上8pt)で同じ中心になる
-- **右クリックメニューはレコードの上だけ**(Delete Record)。空きスロット・
-  レコード間の隙間・余白では何も出さない(シェルフ操作は上のツールバーへ移動)。
-  信号ボタンと右上ツールバーの矩形(`isOverChrome`)も除外してクローム自身に任せる。
-  ウィンドウ座標→グリッド座標は`overlayGridPoint`、スロット判定は
-  `slotInsertion`を再利用している
-- SwiftUIの`.contextMenu`はセルの`.onTapGesture`(クリックで再生)と競合し、
-  **レコード上でメニューが開かない**(2026-10-25実測: onTapGestureを外すと
-  開くようになる)。そのため右クリックは`NSEvent.addLocalMonitorForEvents`
-  で拾ってNSMenuを出している(`makeContextMenuMonitor`)。
-  NSMenuItem.targetは保持されないので、メニューを出している間は
-  クロージャ保持用の`ClosureActionTarget`を生かしておくこと
+該当領域を触るときに必要なものだけ読み込むこと。
 
-## 複数シェルフ(2026-10-25 実装・実機検証済み)
+### スキル（`.agents/skills/`）
+- `builder-reviewer-loop` — ビルダー／レビュアー2体による実装・レビューゲート
+- `sleeves-local-verification` — CLI 検証フラグ（`--catalog-test` / `--chrome-preview` / `--delete-dialog-preview`）、`screencapture`、`CGEvent` の手順と制約
+- `sleeves-plugin-dev` — シェルフエフェクトプラグイン（10種フック）と構造スタイル（Store / Ledge / Rack / Wall）の開発ガイド
+- `sleeves-sparkle-release` — Sparkle 2 自動更新、EdDSA 鍵管理、リリース署名・`appcast.xml` 運用
 
-- 1シェルフ=1ウィンドウ。`ShelfManager`(Shared)がシェルフID一覧
-  (shelves.json)とシェルフごとの`ShelfStore`を管理する。`ShelfStore.shared`
-  は廃止。`ShelfStore(shelfID:)`を`manager.store(for:)`経由で引く
-- 新シェルフは ⇧⌘N(CommandGroupで.newItemを置き換え=標準⌘Nは無い)か
-  右上ツールバーの3点リーダーメニューから。新シェルフは空で始まる
-  (プリセットアルバムのシードは廃止 — 2026-11-09。読み込み失敗時の
-  fallbackも全シェルフ空)
-- ウィンドウの値=`WindowGroup(id:"shelf", for:String.self)`のString?
-  (シェルフID)。値なし(nil)のウィンドウ=起動時やドックアイコンで
-  システムが作るもの → プライマリシェルフになり、
-  `openMissingShelfWindows`で未オープンのシェルフのウィンドウを開き直す。
-  プライマリが既に開いている値なしウィンドウは重複として自分を閉じる
-- **WindowGroupの値なし初期ウィンドウは「部分復元」で作られない**:
-  macOSのウィンドウ復元で補助ウィンドウ(設定画面)だけが復元されると、
-  WindowGroupが初期ウィンドウを生成しない(実機で起動時にシェルフ
-  ウィンドウ0枚になる現象を確認)。両シーンに
-  `.restorationBehavior(.disabled)`+WindowGroupに
-  `.defaultLaunchBehavior(.presented)`を付けて自前復元に一本化した。
-  ※WindowGroup自身にも復元が効くと、自前オープンとmacOS復元が
-  二重オープンすることがあった(実測で3窓)
-- マウス座標変換(overlayGridPoint/slotScreenCenter)は`keyWindow`ではなく
-  `windowBox.window`(そのビューのウィンドウ)を使う。複数窓で
-  非keyウィンドウへのドラッグが狂うため。WindowConfiguratorの
-  `onWindowReady`/`onBecameKey`コールバックで取得
-- **フォーカス中シェルフの追跡**: WindowConfiguratorのdidBecomeKey通知で
-  `ShelfManager.focusedStore`を更新。設定画面(SettingsView)はこれを編集する
-  (=「設定はフォーカスしているウィンドウで有効」)。なお `ShelfView` は
-  `ShelfManager.shared` を `@ObservedObject` で監視せず(フォーカス切替の
-  たびに全シェルフの `body` が再評価されるのを避けるため)、
-  `ShelfManager.shared.$shelfIDs` だけを `.onReceive` で購読して
-  `Delete Shelf…` の有効/無効(`canDeleteShelf`)を更新する
-- **閉じたウィンドウのモニタ再登録防止**: `WindowConfigurator.View` は
-  `NSWindow.willCloseNotification` で `isClosing = true` を立て(新しい非nil
-  ウィンドウへのアタッチで `false` に戻す)、`updateNSView` で `guard !view.isClosing`
-  として `refreshChrome()` と `onWindowReady` を遮断する(クローズ後に走った
-  `updateNSView` が `monitorsByWindow` へイベントモニタを再登録してリークする
-  不具合の防止)
-- **タイトルバー下のセパレータ線は`.windowStyle(.hiddenTitleBar)`で消す**
-  (macOS 26実測): styleMaskに.fullSizeContentViewを挿入しても
-  contentLayoutRectがタイトルバー帯を含まず(contentLayout={{0,0},{W,H-32}})、
-  帯はシステム描画でその下端に線が残る。titlebarSeparatorStyle=.noneでも
-  消えない。hiddenTitleBarなら帯自体が消え、マージンと信号ボタン表示も保たれる
-- 設定画面は`Window(id:"settings")`シーン。`Settings`シーン(Cmd+,)は廃止。
-  開き方: 右上ツールバーの3点リーダー→「Settings…」。
-  同じメニューにNew Shelf/Delete Shelf…もある(最後の1枚は削除不可)
-- PlaybackMonitorのポーリングは参照カウント式(全シェルフで共有。
-  .onAppearで+1、.onDisappearで-1、0で停止)
-- シェルフ間ドラッグ: ペーストボードに`ShelfDragPayload`
-  (sourceShelfID+MediaEntryのJSON)を載せる。ドロップ先でdecodeし、
-  同じシェルフなら配置/並び替え(ShelfPlacement.place/reorderの
-  シミュレート→着地でapplyPlacement)、別シェルフならtransferDrop
-  (insertionShiftシミュレート→着地でapplyPlacement+元シェルフremove。
-  先に消すと失敗時にレコードが消える)。重複/満杯はfalseで拒否=元に残る。
-  元ウィンドウのゴースト/draggedIDは、終了検知モニタがゴーストの
-  所有権移譲を見て「移動済み」と片付く(※entries所属ではなく
-  `ghost.owner`で判定する — 着地removeまで元entriesに残っているため
-  entries判定だとキャンセルと誤認してフライバックを上書きする)
-- **透明ガラス領域は合成クリックが素通りする**(実測): NSGlassEffectView
-  だけの余白/空きスロットへのCGEvent右クリックは背面アプリに届くことが
-  ある。検証時は不透明なレコード画像か、ウィンドウをAXRaiseしてから
-  打つこと。実ユーザー操作では問題なくメニューが出る(実機確認済み)
-- コンテキストメニュー内の項目選択は合成イベントでは不安定。
-  メニューが開いた状態で矢印キー+returnのCGEventなら選択できた
-  (「設定…」→設定画面オープンを実機確認)
-- iTunes Search/Lookup APIは認証不要だがプレイリスト非対応。プレイリストの検証は
-  MusicKitカタログAPI(`MusicCatalogResourceRequest<Playlist>(matching: \.id, equalTo: ...)`)
-  で行う。カタログ読み取りにユーザー認可は不要
-- MusicKitは**entitlementではなくruntimeサービス**(2026-10-18 検証済み)。
-  `com.apple.developer.musickit` というentitlementは存在せず、entitlementsファイルに書くと
-  プロビジョニングで「invalid entitlement」エラーになる。**entitlementsファイルに書いてはいけない**
-- MusicKitカタログAPIに必要なのは: developer.apple.com → Identifiers → App ID
-  `com.cacheandbuffer.Sleeves` → **App ServicesタブでMusicKitにチェック**
-  (旧 `com.cacheandbuffer.Records` では登録済み。バンドルID変更に伴い
-   新ID側でのApp ID作成+MusicKit有効化が別途必要 — 2026-11-リネーム時)
-  - CLI/`-allowProvisioningUpdates` からはApp IDサービスを有効化できない(pbxprojの
-    `SystemCapabilities` 注入も無効だった — MusicKitはXcodeのcapabilityに無い)
-- `NSAppleMusicUsageDescription`(Info.plist)が無いと、MusicAuthorization.request() 時に
-  TCCがSIGABRTでアプリを即死させる(project.ymlの `INFOPLIST_KEY_NSAppleMusicUsageDescription` で対応済み)
-- Apple Music権限は `MusicAuthorization.request()` 1つに集約され、macOSではTCC
-  `kTCCServiceMediaLibrary`(itunescloudd.tcchelper経由)として
-  「プライバシーとセキュリティ → メディアとApple Music」に出る。
-  システム設定上の内訳(「メディアライブラリ」「ミュージックとビデオの履歴」等)は
-  この1許可のスコープ表示で個別ON/OFF不可(2026-11-14調査)。
-  `ApplicationMusicPlayer.Queue.affectsListeningHistory`(macOS 26.4+)をfalseにすれば
-  再生を履歴に残さないこともできるが、ユーザー方針で履歴に残す=既定trueのままとした(2026-11-14)。
-  `tccutil reset MediaLibrary <bundleID>` はTCC側だけ戻し、
-  MusicKit認可(itunescloudd管理)は残るので再プロンプト検証には使えない(実測)
-- **CLI検証経路**: `Sleeves --catalog-test <URL> [--play]` で起動するとUIを介さず
-  MediaCatalogClient.fetch(+PlaybackEngine.play)を実行し結果をログに出して終了する
-  (SleevesApp.swiftのinit内。UIを触れないエージェントの検証用)
-  - `Sleeves --chrome-preview` は起動1.5秒後にツールバー/信号ボタンを強制表示する
-    (3秒で自動的に隠れる。マウス移動・クリックを合成できないエージェントが
-    スクリーンショットで見た目を確認するための経路。複数シェルフがある場合は
-    プライマリのウィンドウだけが対象)
-  - `Sleeves --delete-dialog-preview` は起動1.5秒後に合成エントリ
-    (id=delete-dialog-preview、実storeに無いのでDeleteはno-op)の
-    削除確認ダイアログをforceConfirmで自動表示する(右クリック合成なしで
-    ダイアログの見た目・AX構造・ボタン動作を検証するための経路。
-    チェックトグルは実settings.jsonを書き換えるので注意)
-
-## シェルフエフェクトプラグイン(2026-11-01 CAC-9で面変形フック追加)
-
-ジャケットへの劣化加工・光沢・後傾などをプラグイン化する機構。
-基盤は `Sleeves/Plugins/ShelfPlugins.swift`(`ShelfPlugin`プロトコル+
-`ShelfPluginRegistry`)、合成点はShelfView.swiftのAlbumSlotView。
-`ShelfPluginRegistry.all`の並び=適用順=設定画面の表示順。
-
-設定画面の分類はプラグインの `category`(record/wall/shelf/lighting/
-placement)に基づく。サイドメニューのペインはほぼcategoryと1対1
-(2026-11-14に壁をShelfペインから独立ペインへ分離)だが、末尾の
-「飾り方(Arrangement)」ペインだけはplacement(Lean Depth)と
-lighting(Ambient Light/Sleeve Gloss)の2カテゴリを束ねて表示する
-(同日に旧Record Placementペインを解体し、Record Spacingは
-Shelfペインへ移した)。`canDisable=false`(現状wallのみ)の
-プラグインは常時有効: 設定画面にON/OFFトグルを出さず、
-resolve/resolveShelfでもsettingsのenabledフラグを無視する。
-ShelfSettingsのデコード時にwallのstaleなenabled=falseはtrueへ
-正規化される(pluginSummaryが"off"と誤報しないため)。
-
-フックは10種(デフォルト全てno-op、必要なものだけオーバーライド)。
-(a)〜(d)はセル単位で`applyingJacketPlugins`/`applyingCellPlugins`
-が合成し、(e)(f)はグリッド単位でresolveShelfが解決してShelfViewの
-grid .background/.overlayへ重畳する。(a)〜(c)内での合成順は
-(a)→(b)→(c):
-
-- (a) `transformJacket` — ジャケット**画像のみ**の修飾(色調・フィルタ等。
-  SunFade/Yellowingの全体効果)。後段のオーバーレイには掛からない。
-  **幾何変形(3D回転等)をここに積むとオーバーレイが面からずれる**
-- (b) `jacketOverlay` — ジャケット面上に描くオーバーレイ
-  (SleeveGloss/EdgeWear/RingWear/Scuffs/Yellowingシミ)。
-  変形前の平面でZStack+clipShape(jacketShape(cellIndex:))重畳。
-  面の一部なので(c)の変形に追従する。各オーバーレイは
-  `.allowsHitTesting(false)`必須(タップ再生・D&D・右クリックを食わないため)
-- (c) `transformJacketSurface` — ジャケット+全オーバーレイの合成物を
-  1枚の面として変形するフック。LeanDepthのrotation3DEffectはここ
-- (d) `transformCell` — セル全体(面+既定影+ホバー)を包む装飾
-  (LeanDepthの接地影)
-- (e) `shelfBackdrop` — グリッド背面への描画(WallPluginの壁+経年、
-  AmbientLightPluginの暖色被せ/周辺減光)。padding適用済みgridの
-  .backgroundにレジストリ順で重畳
-- (f) `shelfOverlay` — グリッド前面への描画(StoreShelfPluginの
-  棚板+前柵、LedgeShelfPluginのレッジ)。gridの.overlayに
-  レジストリ順で重畳。合成側が.allowsHitTesting(false)を掛ける
-- (i) `slotContentOffset` — スロットごとのレコードオフセット。
-  構造プラグインが開口内でのレコード位置をピッチ位置からの
-  平行移動量で宣言する(既定.zero=ピッチ位置。RackShelfPluginは
-  開口の中央・床の上へずらす)。ShelfViewはセルへ.offsetで
-  適用し、ShelfShareViewも同じオフセットを掛ける(グリッドの
-  ピッチ・余白・ウィンドウサイズは変わらない)。
-  **レコードの見た目の位置を読む側(ヒット判定・ドロップゾーン
-  座標・ゴースト着地・最近傍空きスロット)はピッチ位置(slotRect)
-  ではなくオフセット済みの矩形(ShelfView.slotVisualRect)を
-  使うこと** — ずれたレコード上の右クリック/ドロップが別
-  スロットや余白扱いになる。また上辺のウィンドウ移動ドラッグ帯も
-  `ShelfPlacement.topDragStripHeight` に1段目のオフセットを渡し、
-  `dy < 0` で上へせり上がった1段目レコードと重ならないよう縮める。
-  複数スロットへ読む経路では
-  settings経路の再解決を避け、1回解決した
-  `[ResolvedShelfStructure]`をslotContentOffset(slot:resolved:)
-  へ渡す(resolveShelf数百回/マウス移動を防ぐ)
-- (j) `shelfTransparentRegions` — 窓コンテンツを透明で抜く矩形群
-  (既定[]=抜きなし)。構造プラグインが「キャビネットの
-  シルエットに含めない領域」を宣言するフック。ShelfViewは
-  グリッド(フレーム直後・オーバーレイ群の手前)とガラス背景の
-  両方へ`WindowNotchShape`(全域−矩形を矩形和で構成するShape)
-  のclipShapeを掛け、抜けた領域はガラスも含めて描かれず
-  デスクトップがそのまま透ける。**切り欠き内部はSwiftUIの
-  ヒット判定も無くなる**(ので操作に必要な領域は宣言しては
-  いけない)。clamped(ScrollView化)時はコンテンツ
-  座標がスクロール分ずれるため切り欠きは無効化する。
-  ShelfShareView(静的画像)も同じclipShapeで揃える。
-  レジストリ集約は`ShelfPluginRegistry.transparentRegions(resolved:)`
-  ※過去にmask/clipShape/destinationOutを試して「操作が全滅」
-    と報告されたが、真因は切り欠きではなくWindowDragGestureの
-    複数シェルフ時の不具合だった(HEADでも再現。WindowDragStrip
-    化で解決済み)。clipShape適用をフレーム直後・オーバーレイ手前
-    にしているのは、ドラッグ帯/ツールバー/ドロップ受けの判定を
-    温存するため
-
-合成系フックのほか、棚レベルの外周余白への追加要求フック
-`shelfPaddingInset(values:)` がある(既定0=要求なし)。構造
-プラグインが「この太さの部材を、間隔由来の余白とは別に外周へ
-専有の帯として確保したい」と宣言するもので、RackShelfPluginは
-frameThicknessを返す。辺別要求が必要な場合は
-`shelfPaddingInsets(values:)`(辺別タプル版。既定は
-shelfPaddingInsetの値を全辺へ展開)をオーバーライドする —
-RackShelfPluginは上辺へdepthを追加要求する(キャビネット上面の帯)。
-要求値は**加算**: レジストリは有効
-プラグインの要求の辺ごとの最大値を `resolvePaddingInset` で解決し、
-`effectivePadding(settings:)` が各辺で 導出値+inset を返す
-(=グリッドがinset分だけ広がるだけでレコード位置は不変。
-導出値は常に保持されるので、導出値を配置領域に使う部材の
-残り=開口の奥行き感は部材の太さに依らず、Frame Thicknessと
-Spacing系スライダーが独立する)。**余白を読む側(グリッド計算・
-resolveShelf・画面座標変換)は必ずeffectivePaddingを使うこと** —
-生の導出値を使うとプラグインの部材とレコード位置がずれる。
-
-同じ加算原理がレコード間隔にもある: `shelfSpacingInset(values:)`
-(既定(column:0,row:0)=要求なし)は「内部部材(棚板・縦仕切り)
-のために設定間隔の上へ追加のピッチを確保したい」という宣言で、
-RackShelfPluginは(dividerThickness, shelfThickness)を返す。
-レジストリは成分ごとの最大値を `resolveSpacingInset` で解決し、
-`effectiveSpacing(settings:)` が (設定値+inset) を返す。
-これで内部部材の前面は実効間隔にクランプされても設定太さ
-そのものになり、部材両脇の残り(recess)は設定間隔の半分で
-一定になる(=Shelf/Divider ThicknessをSpacing系スライダーから
-切り離す機構。ピッチはinset分だけ広がりウィンドウも大きくなる
-が、レコード同士の見た目の隙間=残りは設定値のまま)。
-**レコードピッチを読む側(グリッド計算・resolveShelf・
-スロット矩形・最近傍空きスロット等)は必ずeffectiveSpacingを
-使うこと** — 生の設定値を使うと内部部材とレコード位置がずれる。
-
-CAC-9の教訓: 旧設計では変形がtransformJacketにあり「全transform畳み込み→
-全オーバーレイ」の順だったため、rotation3DEffect(描画だけ変形し
-レイアウト境界は不変)の外側にオーバーレイが残り平面にずれて見えた。
-**面を変形するプラグインは必ずtransformJacketSurfaceに実装すること**。
-rotation3DEffectはレイアウト境界(=ヒット領域)を変えないので
-タップ/D&D判定は変形の有無に関わらず同一。
-
-各プラグインは`logAppliedOnce`でプロセス内1回だけ解決値をnoticeログに出す
-(セル描画のたびに呼ばれるため毎回は出さない)。コンテキストは
-`ShelfPluginRegistry.resolve(settings:cellSize:cellIndex:)`がセルごとに
-解決(パラメータ値+セルindex+セル中心の正規化座標+グリッド次元)。
-
-ジャケットの角丸は角ごとに1または2pt(ShelfPluginLayout.jacketCornerRadii/
-jacketShape(cellIndex:)。実物のLPジャケットは角ごとにわずかに丸い)。
-半径はセルindex+角番号だけから決まるsinハッシュ(摩耗プラグインと同じ
-決定論)なので、同じセルは常に同じ角丸。セルのclipShape/contentShape・
-オーバーレイクリップ・ドラッグゴーストのパスマスク(非反転座標なので
-上下をswap)がすべてこの形を共有する。
-セル座標ハッシュ(sinハッシュ)でパターンを決定論的にばらつかせるのが
-各プラグイン共通の作法。
-
-## シェルフのスタイル(2026-11-03 実装・実機検証済み)
-
-シェルフの「支え構造」は排他選択。`ShelfSettings.ShelfStyle`
-(settings.jsonの `"shelfStyle"`。"store"=通し棚板+アクリル前柵、
-"ledge"=スロットごとの木製レッジ、"rack"=箱型キュービーの
-レコードラック。キー無し/未知値は .store)で保持し、
-設定画面ShelfペインのStyleピッカーで切り替える。
-
-- 構造プラグインは `var shelfStyle` で自身のスタイルを宣言する
-  (WallPluginのようなスタイル非依存プラグインはnil)。レジストリの
-  resolve/resolveShelfは `plugin.shelfStyle != settings.shelfStyle` の
-  構造プラグインを有効フラグに関わらず除外し、設定画面のEffects一覧も
-  同じ条件でフィルタする(非選択側のトグルは見た目に効かないので出さない)
-- **壁はスタイルと直交するため WallPlugin(id="wall")に分離済み**。
-  StoreShelfPluginの描画コードを移したもの。旧settings.jsonで
-  store-shelfが持っていた壁関連キー("wall"/"aging-*")は
-  ShelfSettings.wallParamKeysでデコード時にwallプラグインへ引き継ぐ
-  (store-shelf側の残存キーはspec外として次回保存時に間引かれる)。
-  さらに照明系の2キー(aging-warmth/aging-vignette)にはwallから
-  ambient-lightプラグインへの第2段移行がある(キーはwarmth/
-  vignetteにrename、いずれかの値>0ならenabled=trueで作成)
-- LedgeShelfPlugin(id="ledge-shelf"): 各スロット直下に木製レッジ。
-  占有・空きを問わず全スロットに描く(空き=土台だけ残る仕様)。
-  幅はセル幅比1/3〜11/10のスライダー、厚さは棚板と同じ
-  min(設定値,rowSpacing-2,bottomPadding)クランプ、
-  lipでジャケット下端へ前唇を重ねる(=レコードがレッジに載る見え方)、
-  variationでスロットごとの中心ずれ/傾きをsinハッシュで付与。
-  木目はwoodパラメータ(pine/oak/walnut/mahogany/black)ごとの
-  Assets.xcassetsの`wood-*`画像をbaseScale(既定1=等倍)で貼り
-  (WoodTexture.paint。テクスチャより大きい面は、repeats=trueなら
-  baseScaleのままタイル状に繰り返し、falseならaspect-fillで拡大)、
-  切り出し位置をseedのsinハッシュでずらす(画像の端をrect端より外にはみ出す
-  形でずらさないと未描画領域が残る)。アセット欠落時は縦グラデに退く。
-  **素材と描画はStoreShelfPluginの棚板(board)と共通**:
-  `Sleeves/Plugins/Shelf/WoodMaterial.swift`の`WoodMaterial`
-  (選択肢+assetName+フォールバックgradient)と`WoodTexture`
-  (Canvas先頭で1回resolve→paint)を両プラグインが使う。
-  boardパラメータも同じ5択で、seedは行番号
-- RackShelfPlugin(id="rack-shelf"): 各スロットが木箱の開口になる
-  箱型キュービックキャビネット(背板はshelfBackdrop、開口の内壁・
-  縦仕切り・横棚板・外枠+台輪はshelfOverlayのCanvas)。開口
-  (aperture)はセルrectを各辺の残り分だけ外側へ広げた矩形で、
-  部材前面は配置領域(外枠=各辺padding、縦仕切り=columnSpacing、
-  横棚板=rowSpacing)にクランプし、残りは開口へ組み込む
-  (開口同士の距離=部材の太さ)。パラメータ: wood/frameThickness/
-  dividerThickness/shelfThickness/depth。**外枠は
-  shelfPaddingInset(上辺の奥行き・下辺の台輪嵩上げぶんは
-  辺別のshelfPaddingInsets)、縦仕切り・横棚板はshelfSpacingInsetで
-  専用の余白/ピッチを加算要求する**(上のinset項参照)ので、
-  各ThicknessはSpacing系スライダーと独立に設定値どおり描ける。
-  depth>0では最上部[0, depth)にキャビネット上面、各開口の
-  下縁に下側部材の上面=キュービーの床を描く(depth=0は
-  従来どおり。床/上面は「上から見える水平面」の共通
-  ライティング=手前縁が明るく奥縁へAO)。台輪は窓下端の
-  後退した台座: 本体より左右plinthInset(定数=16。窓の角丸
-  半径≈14ptを超える値でないと台座の外下角が窓の角丸に
-  食われて丸く見える)ずつ幅狭で端は角張り、脇の帯は
-  shelfTransparentRegions(フックj)でガラスも含めて窓ごと
-  透明に抜き、デスクトップが透ける=台座が床に立つベースに
-  見える(脇の帯を暗い影で塗り潰す版は「台座の背後に不要な
-  部分が見える」と却下された)。bottom insetにplinthBoost
-  (定数)を加算して嵩上げし、台座の上端には底板張り出しの
-  落ち影、底板下端に段差線、下端を暗く締める(本体を窓端から
-  内側へ寄せる幅広張り出しや、前面に張り出す天面ledgeの
-  光る表現は正面図では読めず却下された)。
-  木目はWoodTextureをbaseScale=0.5+repeats=trueでタイル貼り
-  (woodTextureScale定数で調整。部材がテクスチャより長い
-  場合は拡大せずタイルで繰り返す)
-- **新しいスタイルの追加手順**: ShelfStyleにcaseを足し、
-  `shelfStyle`を返す構造プラグインを作ってレジストリへ登録するだけで
-  ピッカー・フィルタ・resolveまで全部通る
-
-## データ
-
-- シェルフ一覧: `~/Library/Application Support/Sleeves/shelves.json`
-  (シェルフIDの配列。先頭がプライマリ="main")
-- 各シェルフの登録データ/表示設定:
-  `~/Library/Application Support/Sleeves/Shelves/<shelfID>/{albums,settings}.json`
-  (旧レイアウトのルートalbums.json/settings.jsonは起動時にShelves/main/へ自動移行)
-- アートワーク: `~/Library/Application Support/Sleeves/Artwork/<id>.jpg`
-  (全シェルフで共有。削除時は他シェルフの使用有無をShelfManager.isEntryUsedElsewhereで判定)
-- アプリは非サンドボックスでこのディレクトリを使う
-- 旧名Records時代の `~/Library/Application Support/Records` は初回起動時に
-  `Application Support/Sleeves` へ自動移行される
-  (`ShelfStore.migrateLegacyDataDirectoryIfNeeded`。新旧両方ある場合や
-   移行失敗時は旧ディレクトリを残したまま新ディレクトリで続行)
-
-## 構成
-
-- `Shared/` — アプリにリンクされる共有層
-  (MediaEntry/MediaURLParser, MediaCatalogClient, ShelfStore, ShelfSettings, PlaybackEngine, PlaylistPlayer)
-- `Sleeves/` — アプリ本体(ShelfView, SettingsView, WindowGlass, PlaybackMonitor)
-  - `Localizable.xcstrings` — UI文字列カタログ。開発言語en、キーは英語リテラル
-    (補間は%@/%lld形式)。対応言語: en/ja/es/zh-Hans/ko/fr/de
-  - `InfoPlist.xcstrings` — NSAppleMusicUsageDescriptionの翻訳
-    (project.ymlのINFOPLIST_KEY値はen表示用のフォールバック。他言語は
-    カタログが生成するInfoPlist.stringsが使われる)
-- `project.yml` — xcodegen定義(ターゲット変更はここを編集)
-
-## エージェントプラグイン(cursor-team-kit / pstack)のプロジェクトレベル有効化(2026-11-28 検証済み)
-
-**プラグイン本体はリポジトリにコミットしない**。
-`.agents/plugins/install-cursor-plugins.sh` が上流(cursor/plugins)から取得して
-`.agents/plugins/` にローカル展開する(`.gitignore` 済み。node_modules と同じ運用)。
-**clone 後や初回は必ず `bash .agents/plugins/install-cursor-plugins.sh` を実行すること**
-— このスクリプトは本体の展開に加えて、`.devin/config.json` の `requiredPlugins` に
-プラグインのパスを登録する(ファイルが無ければ作成、既存なら他キーを保持したまま
-jq でマージ。`.devin/config.json` はコミットせず gitignore 済みのローカル状態)。
-更新も同じコマンドの再実行で、upstream main 最新に rsync --delete で同期される。
-導入しているのは **cursor-team-kit**(18スキル+2サブエージェント。
-`deslop`/`verify-this`/`loop-on-ci`/`control-ui`等)と
-**pstack**(59スキル+2サブエージェント。`/pstack:poteto-mode`が中心。
-pstackが参照する`cursor-team-kit`の`/deslop`/`control-ui`/`control-cli`は
-同時にinstallしたcursor-team-kitで満たされる)。有効化の検証済み事実:
-
-- **`.devin/config.json` の `requiredPlugins` にローカル相対パス
-  `"./.agents/plugins/cursor-team-kit"` を書く方式で有効化できる**
-  (公式ドキュメントは git ソースのみ記載だが、ローカルパスも実際には受理される)。
-  リモートfetchではなく作業コピーそのものが使われるので編集が即反映される。
-  この登録は install-cursor-plugins.sh が自動で行う(手で書く必要はない)
-- 検証は認証不要で `devin skills list` を実行し、ログの
-  `plugins discovery: ... active_plugins=1 skills=18 agents=2` と
-  出力の `/cursor-team-kit:<skill>` 行で確認できる
-- **`.agents/plugins/marketplace.json` は Devin に自動ロードされない**
-  (OpenAI/Codex の規約であって Devin の規約ではない。実機検証済み)
-- `devin plugins install/list` 等のプラグイン管理コマンドはクラウド認証
-  (`devin auth login`)必須だが、repo レベルの requiredPlugins 解決には不要
-- pstack の注意点: スキル本文にCursor専用モデルスラッグ
-  (`claude-opus-5-5-xhigh-fast`等)や `~/.cursor/rules` パスの言及が残るが
-  散文レベルの話で、マルチモデルパネル等の高度な機能はDevinでは
-  デフォルトモデルに読み替わる。principle-* 系の原則スキルや
-  swarm/arena/unslop 等のワークフローはモデル非依存でそのまま機能する
-- pstack のスキルは `disable-model-invocation` 付きが多く
-  `/pstack:<skill>` スラッシュコマンドで明示起動する設計
-  (Devinもこのフィールドを解釈することを確認済み — 一覧で`[user]`表示)
-- プラグインスキルは `/cursor-team-kit:<skill>` のスラッシュコマンド形式。
-  サブエージェントはCLI/Devin Desktopのみでロード(クラウドセッションでは不可)
-
-### Devin専用poteto-mode adapter(2026-11-28 検証済み)
-
-`/devin-poteto-mode` はDevin専用の薄いadapter。genericな
-`/pstack:poteto-mode` 本体は複製せず、原則・playbook・worker規約の
-source of truthとして読む。adapterが持つのはDevin差分だけ:
-`Task`→`run_subagent`、`subagent_type`→`profile`、
-`run_in_background`→`is_background`、poteto delegateを
-`.devin/agents/poteto-swe-write.md` / `poteto-swe-review.md` へ割り当てる
-対応表。両profileとも `model: swe-2-1-high` 固定。
-
-利用前に `bash .agents/plugins/install-cursor-plugins.sh` を実行し、
-pstack本体と `.devin/config.json` のrequiredPluginsをローカル生成しておくこと。
-検証は `bash .agents/skills/devin-poteto-mode/validate.sh`。
-Devinのcustom subagent profileはsession開始時に読み込まれるため、
-`Unknown subagent profile` が出たら設定不足と判断せず新しいDevin sessionで
-確認する。
-
-### install-cursor-plugins.sh が行う适配(上流からの改変点)
-
-上流(cursor/plugins)を sparse clone して rsync --delete で同期し、
-以下を自動適用する: `.cursor-plugin/` 除外、
-`assets/avatar.png`/`logo.png`→`icon.png` リネーム、
-agents/*.md から非ポータブルな `model:`/`is_background:` 行を除去、
-cursor-team-kit の root `plugin.json` を上流 `.cursor-plugin/plugin.json` から
-jq で変換生成(Cursor固有キーを落とし、それ以外のメタデータは上流を継承)。
-冪等性は「退避→スクリプトで再インストール→diff -rで完全一致」を実施済み。
-実行後は `devin skills list` の discovery ログ
-(active_plugins=2 skills=77 agents=4)で検証できる。
-
-## ウィジェット拡張について(2026-10-24 撤去済み)
-
-WidgetKit拡張(RecordsWidget)は**撤去した**。正方形ウィジェット枠内で
-アプリ同等の均一余白が実現できず、見た目の要件を満たせなかったため。
-
-もし復活させる場合の重要な知見(詳細はgit履歴参照):
-
-- 拡張は app-sandbox 必須。sandbox内で `urls(for:.applicationSupportDirectory)` は
-  コンテナを指すため共有データには `getpwuid` 実ホーム解決が必要
-- デスクトップ非アクティブ時の減退描画で画像を保つには
-  `Image.widgetAccentedRenderingMode(.fullColor)`(Image専用)
-- 設置済みウィジェットのkind名を変えると `No matching descriptor` で壊れる
-- 描画が壊れたときのリセットは `~/Library/Containers/com.cacheandbuffer.Sleeves.widget/`
-  コンテナごとFinderで削除(TCCでターミナルからは消せない)
-
-## 更新チェック(Sparkle 2)とEdDSA鍵(2026-11-08 実装・E2E検証済み)
-
-### 構成
-
-- **Sparkle 2.10.1**(SPM、project.ymlでexact pin。バンプするときは
-  `.github/workflows/release.yml`の`SPARKLE_VERSION`も一緒に上げる)
-- 更新UIはすべてSparkle標準(`SPUStandardUpdaterController`のデフォルト
-  UserDriver)。`Sleeves/UpdateController.swift`はログ用
-  `SPUUpdaterDelegate`を差し込む薄いラッパーだけ
-- メニューはSleeves→「Check for Updates…」(`CommandGroup(after: .appInfo)`)、
-  自動チェックは`SUEnableAutomaticChecks`=YES + `startingUpdater:true`
-  (アプリ側にスケジュールコードは無い)
-- `UpdateController`は`--catalog-test`経路では生成しない
-  (その経路はUIを出さず即exitするのでSparkleのスケジューラを
-  起動させない。SleevesApp.initでoptionalにしてある)
-- Sparkle系の詳細ログはサブシステム`org.sparkle-project.Sparkle`にも
-  出る。更新失敗の原因調査はこちらを見ること:
-  `log show --last 5m --info --predicate 'subsystem CONTAINS "sparkle"'`
-
-### フィードとリリース
-
-- `SUFeedURL` = `https://github.com/matsuokashuhei/Sleeves/releases/latest/download/appcast.xml`
-  (各リリースに`appcast.xml`を添付する方式。`latest/download`が常に
-  最新リリースのアセットへリダイレクトするので固定URLで済む)
-- `release.yml`が`generate_appcast`でappcastを生成し
-  `gh release upload --clobber`で添付する
-- `Sleeves/Info.plist`は部分plistで、ビルド時に生成Info.plistへ
-  マージされる(SUFeedURL/SUPublicEDKey/SUEnableAutomaticChecksの3キー)
-
-### EdDSA鍵(最重要)
-
-- **鍵ペアは2026-11-08に`generate_keys`(Sparkle 2.10.1同梱ツール)で生成済み**
-- 公開鍵: `Sleeves/Info.plist`の`SUPublicEDKey`に埋め込み済み
-- 秘密鍵の置き場所(2箇所、どちらもリポジトリ外):
-  - macOSログインキーチェーン(「Private key for signing Sparkle updates」。
-    `sign_update`/`generate_appcast`は引数無しでこれを自動利用する)
-  - エクスポートファイル `~/.config/records/sparkle-eddsa-private-key`
-    (mode 600。`generate_keys -x`形式の44バイト)
-- **秘密鍵を絶対にコミット・ログ・PR・スクショに出さない**。
-  漏洩すると第三者が正規の更新を偽造できる。紛失・漏洩時は
-  `generate_keys`で新ペアを生成し、新SUPublicEDKeyを含むリリースで
-  ローテーション(Sparkleは鍵ローテーションをサポート)
-- **GitHubシークレット `SPARKLE_EDDSA_PRIVATE_KEY`**(ファイルの中身
-  そのまま)が`release.yml`のappcast生成で必須。CIからはキーチェーンへ
-  アクセスできないため。登録:
-  `gh secret set SPARKLE_EDDSA_PRIVATE_KEY -R matsuokashuhei/Sleeves < ~/.config/records/sparkle-eddsa-private-key`
-
-### 検証済みの落とし穴(2026-11-08 実機)
-
-- **`sparkle:version`はCFBundleVersionとしか比較しない**
-  (shortVersionStringへのフォールバックは無い)。配布済みv0.1.0は
-  `CFBundleVersion=1`なので、今後のCFBundleVersionは必ず"1"を超える
-  単調増加整数でなければならない → リリースビルドは
-  `CURRENT_PROJECT_VERSION="${{ github.run_number }}"`を採用
-  (semverを入れると`0.2.0 < 1`でv0.1.0へ永遠に更新が届かない)。
-  MARKETING_VERSION側が人間向け表示を担う
-- **更新ペイロードにも`SUPublicEDKey`が必須**。ホストに鍵があるのに
-  新appに無いと「key removal」として検証失敗する(2026-11-08に
-  Sparkle未搭載のv0.2.0 DMGへの更新が実際に拒否されたことを確認)。
-  Sparkleを含まないリリースは更新対象になり得ない
-- **SPM由来のSparkle.frameworkはadhoc署名**。リリース署名はinside-out
-  (XPC群→Autoupdate→Updater.app→framework→app)でないとnotarizationで
-  rejectされる。`--deep`一発ではネストに`--options runtime`が伝わらない
-- `generate_appcast`が`sparkle:edSignature`を付けないことがある
-  (2026-11-08に1度確認、原因不明・2回目は付いた)。CIのログ
-  (`head -30 appcast.xml`)で必ず`edSignature=`の有無を確認すること。
-  無いappcastは更新が拒否される → その場合は`sign_update`で署名して
-  enclosure属性へ手動追加すればよい(実施済み手順はPR #47の報告参照)
-- 手動でリリースにappcastを後付けする手順(Sparkleツールのtar.xzを
-  DL、`generate_appcast --ed-key-file`、`gh release upload --clobber`)は
-  実測済み。`sparkle:version`の手直しもXMLを直接編集すればよい
-- **E2E実証済み**: localhostフィード+Sparkle入りペイロードで
-  検出→DL→EdDSA検証→インストール→自動再起動→新バージョン稼働まで
-  全経路が動いた(テスト手順はgit履歴/Devinセッション参照)
+### 設計メモ（`docs/architecture/`）
+- `docs/architecture/music-playback.md` — Apple Music / MusicKit / Shortcuts / TCC / Spotify 再生・メタデータ取得仕様
+- `docs/architecture/shelf-ui-and-dnd.md` — スパース配置、D&D・GhostPanel、余白・Liquid Glass・右クリック、複数シェルフ、データ永続化・旧移行仕様
+- `docs/architecture/agent-plugins.md` — `cursor-team-kit` / `pstack` 導入・変換仕様と Devin / Antigravity adapter 運用メモ

@@ -6,8 +6,8 @@ macOS アプリ「Sleeves」の Mac App Store 申請・公開用 Web サイト�
 
 ```bash
 docker run -d --rm --name sleeves-website -p 8080:80 \
-  -v "$PWD/Website/site:/usr/share/nginx/html:ro" \
-  -v "$PWD/Website/nginx.conf:/etc/nginx/conf.d/default.conf:ro" \
+  -v "$PWD/apps/web/site:/usr/share/nginx/html:ro" \
+  -v "$PWD/apps/web/nginx.conf:/etc/nginx/conf.d/default.conf:ro" \
   nginx:alpine
 ```
 

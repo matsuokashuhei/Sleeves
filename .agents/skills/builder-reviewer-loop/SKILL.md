@@ -36,15 +36,15 @@ description: "Sleeves用の2サブエージェント実装ループ。ビルダ�
 - AGENTS.mdの鉄則を引用して書く(ビルダーが見落とせないように):
   - すべてのUIアクションと非同期処理に`os.Logger`を仕込む。
     subsystemは`com.cacheandbuffer.Sleeves`、文字列補間は`\(v, privacy: .public)`。
-  - ファイルの追加・削除・リネーム後は必ず
-    `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodegen generate`
+  - ファイルの追加・削除・リネーム後は必ず `make gen`
+    （`cd apps/macos && DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodegen generate`）
     を実行する。project.pbxprojの手編集は禁止。
   - `SleevesApp.init`内の`Sleeves --catalog-test <URL> [--play]` CLI経路を
     壊さない。
-- ファイルマップ: `Sleeves/`(アプリUI)、`Shared/`(アプリとウィジェット
-  双方にリンク — ここを変えるとウィジェットに影響)、`project.yml`。
+- ファイルマップ: `apps/macos/Sleeves/`(アプリUI)、`apps/macos/Shared/`(アプリとテストターゲットに
+  リンク)、`apps/macos/project.yml`。
 - ビルドコマンド:
-  `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -project Sleeves.xcodeproj -scheme Sleeves -configuration Debug -derivedDataPath .build build`
+  `make build`（または `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -project apps/macos/Sleeves.xcodeproj -scheme Sleeves -configuration Debug -derivedDataPath .build build`）
 - ビルダーはUIを目視できないこと — スクリーンショットではなく
   コンパイル+ログで検証するよう指示する。
 - 報告フォーマット: 変更/新規/削除ファイル一覧、設計上の主要な選択、
