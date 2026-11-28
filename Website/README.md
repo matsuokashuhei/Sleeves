@@ -32,8 +32,7 @@ docker stop sleeves-website
    - `site/support/index.html`
    - `site/privacy/index.html`
    - `site/terms/index.html`
-2. **Mac App Store URL**: 公開後に `site/index.html` 内の `<!-- TODO: Replace ... Mac App Store URL -->` 箇所のリンクと「近日公開 / Coming Soon」表記を更新してください。
-3. **App Store Connect 設定**:
+2. **App Store Connect 設定**:
    - **Marketing URL**: `https://<your-domain>/`
    - **Support URL**: `https://<your-domain>/support/`
    - **Privacy Policy URL**: `https://<your-domain>/privacy/`

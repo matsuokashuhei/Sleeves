@@ -1,13 +1,13 @@
 <!DOCTYPE html>
 <html lang="ja" data-lang="ja"
-  data-title-ja="Sleeves — あなたのMacに、お気に入りのレコード棚を。"
-  data-title-en="Sleeves — A Tactile Record Shelf for Your Mac">
+  data-title-ja="Sleeves — あなたのデスクトップに、お気に入りのレコード棚を。"
+  data-title-en="Sleeves — Your favorite record shelf, right on your desktop.">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Sleeves — あなたのMacに、お気に入りのレコード棚を。</title>
+  <title>Sleeves — あなたのデスクトップに、お気に入りのレコード棚を。</title>
   <meta name="description" content="Apple MusicとSpotifyのお気に入りアルバム・プレイリストを、本物のレコード棚のようにデスクトップに飾ってクリック再生できるmacOSアプリ。" />
-  <meta property="og:title" content="Sleeves — A Tactile Record Shelf for Your Mac" />
+  <meta property="og:title" content="Sleeves — Your favorite record shelf, right on your desktop." />
   <meta property="og:description" content="Display your favorite Apple Music and Spotify albums as a physical vinyl shelf on macOS. Click any sleeve to play." />
   <meta property="og:type" content="website" />
   <meta property="og:image" content="/assets/icons/app-icon.png" />
@@ -15,7 +15,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/css/style.css" />
+  <link rel="stylesheet" href="/css/style.css?v=2" />
 </head>
 <body>
   <!-- Header -->
@@ -30,10 +30,6 @@
         <a class="site-nav__link" href="#features">
           <span data-lang-only="ja">機能</span>
           <span data-lang-only="en">Features</span>
-        </a>
-        <a class="site-nav__link" href="#customize">
-          <span data-lang-only="ja">カスタマイズ</span>
-          <span data-lang-only="en">Customize</span>
         </a>
         <a class="site-nav__link" href="/support/">
           <span data-lang-only="ja">サポート</span>
@@ -63,171 +59,33 @@
         </span>
 
         <h1 class="hero__title">
-          <span data-lang-only="ja">あなたのMacに、<br />お気に入りのレコード棚を。</span>
-          <span data-lang-only="en">A tactile record shelf<br />for your Mac.</span>
+          <span data-lang-only="ja">あなたのデスクトップに、<br />お気に入りのレコード棚を。</span>
+          <span data-lang-only="en">Your favorite record shelf,<br />right on your desktop.</span>
         </h1>
 
         <p class="hero__subtitle">
           <span data-lang-only="ja">
-            Apple Music や Spotify のお気に入りのアルバムやプレイリストを、レコード店の壁のようにデスクトップへ。
+            Apple Music や Spotify のお気に入りのアルバムを、レコード棚のようにデスクトップへ。
             ジャケットを眺めて、気分の一枚をクリックするだけで音楽が流れます。
           </span>
           <span data-lang-only="en">
-            Display your favorite Apple Music and Spotify albums and playlists like a real record shop wall.
-            Admire the artwork on your desktop, and click any sleeve to start listening.
+            Display your favorite Apple Music and Spotify albums like a record shelf on your desktop.
+            Admire the artwork, and click any sleeve to start listening.
           </span>
         </p>
 
         <div class="btn-group">
-          <!-- TODO: Replace href="#" with your Mac App Store URL once approved -->
-          <a id="appstore-cta" class="btn btn--primary btn--appstore" href="#download" aria-label="Coming Soon on the Mac App Store">
-            <svg width="22" height="26" viewBox="0 0 22 26" fill="currentColor" aria-hidden="true">
-              <path d="M18.14 13.78c-.03-2.86 2.34-4.24 2.45-4.31-1.34-1.96-3.42-2.22-4.16-2.25-1.76-.18-3.46 1.05-4.36 1.05-.91 0-2.3-1.03-3.79-1-1.94.03-3.74 1.14-4.74 2.88-2.04 3.53-.52 8.75 1.45 11.61.97 1.4 2.12 2.97 3.63 2.91 1.46-.06 2.02-.94 3.78-.94 1.76 0 2.27.94 3.8.91 1.57-.03 2.56-1.42 3.52-2.83 1.11-1.62 1.57-3.2 1.59-3.28-.03-.01-3.14-1.2-3.17-4.75zM15.27 5.36c.8-.98 1.35-2.33 1.2-3.69-1.16.05-2.58.78-3.41 1.75-.74.86-1.39 2.24-1.22 3.57 1.3.1 2.63-.66 3.43-1.63z"/>
-            </svg>
-            <span class="btn--appstore__text">
-              <span class="btn--appstore__sub" data-lang-only="ja">Mac App Store で近日公開</span>
-              <span class="btn--appstore__sub" data-lang-only="en">Coming Soon on the</span>
-              <span class="btn--appstore__main">Mac App Store</span>
-            </span>
-          </a>
-
-          <a class="btn btn--secondary" href="#features">
-            <span data-lang-only="ja">機能を見る</span>
-            <span data-lang-only="en">Explore Features</span>
+          <a id="appstore-cta" class="appstore-badge-link" href="https://apps.apple.com/app/id6838206412" target="_blank" rel="noopener noreferrer" aria-label="Download on the Mac App Store">
+            <img class="appstore-badge" data-lang-only="ja" src="/assets/badges/mac-app-store-ja-black.svg" alt="Mac App Storeからダウンロード" />
+            <img class="appstore-badge" data-lang-only="en" src="/assets/badges/mac-app-store-en-black.svg" alt="Download on the Mac App Store" />
           </a>
         </div>
 
-        <p class="hero__note">
-          <span data-lang-only="ja">下のシェルフは実際に操作できます — 壁材・木目・棚スタイルを切り替えてお試しください。</span>
-          <span data-lang-only="en">Try the interactive shelf below — switch shelf styles, wood finishes, and wall textures live.</span>
-        </p>
-
-        <!-- Interactive Record Shelf Mockup -->
+        <!-- Real App Screenshot -->
         <div class="shelf-stage">
-          <div id="shelf-preview" class="macos-window" data-style="store" data-wood="oak" data-wall="cream" data-vintage="false">
-            <div class="macos-chrome">
-              <div class="traffic-lights" aria-hidden="true">
-                <span class="traffic-light traffic-light--close"></span>
-                <span class="traffic-light traffic-light--min"></span>
-              </div>
-              <div class="chrome-capsule" aria-hidden="true">
-                <span>Sleeves</span>
-                <span>•••</span>
-              </div>
-            </div>
-
-            <div class="shelf-rows">
-              <!-- Row 1 -->
-              <div class="shelf-row">
-                <button type="button" class="record-sleeve is-playing"
-                  data-album="Midnight Corridor" data-artist="The Harbor Quintet" data-service="Apple Music">
-                  <img src="/assets/covers/01_jazz_midnight_corridor.jpg" alt="Midnight Corridor album cover" loading="eager" />
-                  <span class="record-sleeve__badge"><span class="eq-bars"><span></span><span></span><span></span></span>Playing</span>
-                </button>
-                <button type="button" class="record-sleeve"
-                  data-album="Breeze Over Bay 4" data-artist="Haruka Mori" data-service="Apple Music">
-                  <img src="/assets/covers/02_citypop_breeze_over_bay_4.jpg" alt="Breeze Over Bay 4 album cover" loading="eager" />
-                  <span class="record-sleeve__badge"><span class="eq-bars"><span></span><span></span><span></span></span>Playing</span>
-                </button>
-                <button type="button" class="record-sleeve"
-                  data-album="Glass Horizon" data-artist="Koya" data-service="Spotify">
-                  <img src="/assets/covers/03_ambient_glass_horizon.jpg" alt="Glass Horizon album cover" loading="eager" />
-                  <span class="record-sleeve__badge"><span class="eq-bars"><span></span><span></span><span></span></span>Playing</span>
-                </button>
-                <button type="button" class="record-sleeve"
-                  data-album="Sunlit Fern" data-artist="Meadowlark" data-service="Apple Music">
-                  <img src="/assets/covers/04_folk_sunlit_fern.jpg" alt="Sunlit Fern album cover" loading="eager" />
-                  <span class="record-sleeve__badge"><span class="eq-bars"><span></span><span></span><span></span></span>Playing</span>
-                </button>
-                <button type="button" class="record-sleeve"
-                  data-album="Velvet Groove" data-artist="Solar Collective" data-service="Spotify">
-                  <img src="/assets/covers/05_funk_velvet_groove.jpg" alt="Velvet Groove album cover" loading="eager" />
-                  <span class="record-sleeve__badge"><span class="eq-bars"><span></span><span></span><span></span></span>Playing</span>
-                </button>
-                <div class="shelf-board" aria-hidden="true"></div>
-              </div>
-
-              <!-- Row 2 -->
-              <div class="shelf-row">
-                <button type="button" class="record-sleeve"
-                  data-album="Stillness in Three" data-artist="Clara Vance" data-service="Apple Music">
-                  <img src="/assets/covers/06_classical_stillness_in_three.jpg" alt="Stillness in Three album cover" loading="eager" />
-                  <span class="record-sleeve__badge"><span class="eq-bars"><span></span><span></span><span></span></span>Playing</span>
-                </button>
-                <button type="button" class="record-sleeve"
-                  data-album="Concrete Psalm" data-artist="Iron Rail" data-service="Spotify">
-                  <img src="/assets/covers/07_hiphop_concrete_psalm.jpg" alt="Concrete Psalm album cover" loading="eager" />
-                  <span class="record-sleeve__badge"><span class="eq-bars"><span></span><span></span><span></span></span>Playing</span>
-                </button>
-                <button type="button" class="record-sleeve"
-                  data-album="Bassline Geometry" data-artist="Analog Method" data-service="Apple Music">
-                  <img src="/assets/covers/08_hiphop_bassline_geometry.jpg" alt="Bassline Geometry album cover" loading="eager" />
-                  <span class="record-sleeve__badge"><span class="eq-bars"><span></span><span></span><span></span></span>Playing</span>
-                </button>
-                <button type="button" class="record-sleeve"
-                  data-album="Raw Voltage" data-artist="Sonic Syndicate" data-service="Spotify">
-                  <img src="/assets/covers/09_hiphop_raw_voltage.jpg" alt="Raw Voltage album cover" loading="eager" />
-                  <span class="record-sleeve__badge"><span class="eq-bars"><span></span><span></span><span></span></span>Playing</span>
-                </button>
-                <button type="button" class="record-sleeve"
-                  data-album="Warm Honey" data-artist="Sable &amp; Co." data-service="Apple Music">
-                  <img src="/assets/covers/18_rnb_warm_honey.jpg" alt="Warm Honey album cover" loading="eager" />
-                  <span class="record-sleeve__badge"><span class="eq-bars"><span></span><span></span><span></span></span>Playing</span>
-                </button>
-                <div class="shelf-board" aria-hidden="true"></div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Live Customizer Controls -->
-          <div class="shelf-controls" aria-label="Interactive shelf preview controls">
-            <div class="control-group">
-              <span class="control-group__label">
-                <span data-lang-only="ja">棚</span>
-                <span data-lang-only="en">Style</span>
-              </span>
-              <button type="button" class="chip-btn" data-shelf-style="store" aria-pressed="true">Store Shelf</button>
-              <button type="button" class="chip-btn" data-shelf-style="ledge" aria-pressed="false">Ledge</button>
-              <button type="button" class="chip-btn" data-shelf-style="rack" aria-pressed="false">Rack</button>
-            </div>
-
-            <div class="control-group">
-              <span class="control-group__label">
-                <span data-lang-only="ja">木目</span>
-                <span data-lang-only="en">Wood</span>
-              </span>
-              <button type="button" class="swatch-btn" data-shelf-wood="pine" aria-label="Pine wood" aria-pressed="false" style="background-image:url('/assets/textures/wood-pine.jpg')"></button>
-              <button type="button" class="swatch-btn" data-shelf-wood="oak" aria-label="Oak wood" aria-pressed="true" style="background-image:url('/assets/textures/wood-oak.jpg')"></button>
-              <button type="button" class="swatch-btn" data-shelf-wood="walnut" aria-label="Walnut wood" aria-pressed="false" style="background-image:url('/assets/textures/wood-walnut.jpg')"></button>
-              <button type="button" class="swatch-btn" data-shelf-wood="mahogany" aria-label="Mahogany wood" aria-pressed="false" style="background-image:url('/assets/textures/wood-mahogany.jpg')"></button>
-              <button type="button" class="swatch-btn" data-shelf-wood="black" aria-label="Black wood" aria-pressed="false" style="background-image:url('/assets/textures/wood-black.jpg')"></button>
-            </div>
-
-            <div class="control-group">
-              <span class="control-group__label">
-                <span data-lang-only="ja">壁</span>
-                <span data-lang-only="en">Wall</span>
-              </span>
-              <button type="button" class="swatch-btn" data-shelf-wall="cream" aria-label="Cream wall" aria-pressed="true" style="background:#e8dcc7"></button>
-              <button type="button" class="swatch-btn" data-shelf-wall="paper-kraft" aria-label="Kraft paper wall" aria-pressed="false" style="background-image:url('/assets/textures/paper-kraft.jpg')"></button>
-              <button type="button" class="swatch-btn" data-shelf-wall="concrete" aria-label="Concrete wall" aria-pressed="false" style="background-image:url('/assets/textures/concrete.jpg')"></button>
-              <button type="button" class="swatch-btn" data-shelf-wall="billiard-felt" aria-label="Billiard felt wall" aria-pressed="false" style="background-image:url('/assets/textures/billiard-felt.jpg')"></button>
-              <button type="button" class="swatch-btn" data-shelf-wall="gray-linen" aria-label="Gray linen wall" aria-pressed="false" style="background-image:url('/assets/textures/gray-linen.jpg')"></button>
-              <button type="button" class="swatch-btn" data-shelf-wall="orange-wool" aria-label="Orange wool wall" aria-pressed="false" style="background-image:url('/assets/textures/orange-wool.jpg')"></button>
-            </div>
-
-            <div class="control-group">
-              <button id="toggle-vintage" type="button" class="chip-btn" aria-pressed="false">
-                <span data-lang-only="ja">経年エフェクト</span>
-                <span data-lang-only="en">Vintage Wear</span>
-              </button>
-            </div>
-          </div>
-
-          <div class="now-playing-bar" aria-live="polite">
-            <span id="now-playing-ja" data-lang-only="ja">再生中: <strong>Midnight Corridor</strong> — The Harbor Quintet (Apple Music)</span>
-            <span id="now-playing-en" data-lang-only="en">Now Playing: <strong>Midnight Corridor</strong> — The Harbor Quintet (Apple Music)</span>
-          </div>
+          <figure class="hero-screenshot">
+            <img src="/assets/screenshots/hero-shelf.jpg" alt="Sleeves macOS app record shelf screenshot" width="1920" height="1087" loading="eager" />
+          </figure>
         </div>
       </div>
     </section>
@@ -338,85 +196,8 @@
       </div>
     </section>
 
-    <!-- Craft & Customization Section -->
-    <section id="customize" class="section">
-      <div class="container">
-        <div class="section__header">
-          <span class="eyebrow">
-            <span data-lang-only="ja">細部へのこだわり</span>
-            <span data-lang-only="en">Craftsmanship</span>
-          </span>
-          <h2 class="section__title">
-            <span data-lang-only="ja">デスクトップに馴染む、静かな佇まい。</span>
-            <span data-lang-only="en">Designed to feel at home on macOS.</span>
-          </h2>
-          <p class="section__desc">
-            <span data-lang-only="ja">操作していないときはウィンドウのボタンやツールバーがすっと消え、レコードと棚だけが残ります。</span>
-            <span data-lang-only="en">When your pointer rests, window controls and toolbars gently fade away — leaving only your records and shelf.</span>
-          </p>
-        </div>
-
-        <div class="craft-grid">
-          <div class="craft-card">
-            <div>
-              <h3 class="craft-card__title">
-                <span data-lang-only="ja">天然木の質感と多彩な壁材</span>
-                <span data-lang-only="en">Real Wood Grains &amp; Tactile Walls</span>
-              </h3>
-              <p class="craft-card__body">
-                <span data-lang-only="ja">一枚ごとに異なる木目の切り出し位置で描画される棚板と、光の当たり方まで計算された壁・照明レイヤー。あなたの部屋やデスクトップ壁紙に合わせて仕立てられます。</span>
-                <span data-lang-only="en">Every plank shifts its grain offset deterministically so no two shelves repeat identically. Combine warm overhead lighting with paper, plaster, or fabric backdrops.</span>
-              </p>
-            </div>
-            <div class="material-strip">
-              <div class="material-tile">
-                <img src="/assets/textures/wood-pine.jpg" alt="Pine wood" loading="lazy" />
-                <span>Pine</span>
-              </div>
-              <div class="material-tile">
-                <img src="/assets/textures/wood-oak.jpg" alt="Oak wood" loading="lazy" />
-                <span>Oak</span>
-              </div>
-              <div class="material-tile">
-                <img src="/assets/textures/wood-walnut.jpg" alt="Walnut wood" loading="lazy" />
-                <span>Walnut</span>
-              </div>
-              <div class="material-tile">
-                <img src="/assets/textures/wood-mahogany.jpg" alt="Mahogany wood" loading="lazy" />
-                <span>Mahogany</span>
-              </div>
-              <div class="material-tile">
-                <img src="/assets/textures/wood-black.jpg" alt="Black wood" loading="lazy" />
-                <span>Black</span>
-              </div>
-            </div>
-          </div>
-
-          <div class="craft-card">
-            <div>
-              <h3 class="craft-card__title">
-                <span data-lang-only="ja">Dockアイコンも自分好みに</span>
-                <span data-lang-only="en">Customizable App Icons</span>
-              </h3>
-              <p class="craft-card__body">
-                <span data-lang-only="ja">標準のシェルフアイコンに加えて4種類のレコード盤デザインを収録。さらに、お好みの画像をアップロードしてオリジナルのDockアイコンにすることもできます。</span>
-                <span data-lang-only="en">Pick from the classic shelf icon, four vinyl-inspired alternates, or upload your own custom artwork directly in Settings to personalize your Dock.</span>
-              </p>
-            </div>
-            <div class="icon-parade">
-              <img src="/assets/icons/app-icon.png" alt="Default Sleeves icon" loading="lazy" />
-              <img src="/assets/icons/record-1.png" alt="Alternate record icon 1" loading="lazy" />
-              <img src="/assets/icons/record-2.png" alt="Alternate record icon 2" loading="lazy" />
-              <img src="/assets/icons/record-3.png" alt="Alternate record icon 3" loading="lazy" />
-              <img src="/assets/icons/record-4.png" alt="Alternate record icon 4" loading="lazy" />
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-
     <!-- How It Works -->
-    <section class="section section--alt">
+    <section class="section">
       <div class="container">
         <div class="section__header">
           <span class="eyebrow">
@@ -480,21 +261,14 @@
               <span data-lang-only="en">Put the music you love on display.</span>
             </h2>
             <p class="cta-banner__desc">
-              <span data-lang-only="ja">Sleeves は現在 Mac App Store への公開準備中です。公開後、こちらから直接ダウンロードいただけます。</span>
-              <span data-lang-only="en">Sleeves is coming soon to the Mac App Store. Once live, you’ll be able to download it directly from here.</span>
+              <span data-lang-only="ja">Mac App Store からダウンロードして、お気に入りのアルバムをデスクトップに並べましょう。</span>
+              <span data-lang-only="en">Download Sleeves on the Mac App Store and bring your favorite records to your desktop.</span>
             </p>
 
             <div class="btn-group">
-              <!-- TODO: Replace href="#download" with your Mac App Store URL -->
-              <a class="btn btn--primary btn--appstore" href="#download">
-                <svg width="22" height="26" viewBox="0 0 22 26" fill="currentColor" aria-hidden="true">
-                  <path d="M18.14 13.78c-.03-2.86 2.34-4.24 2.45-4.31-1.34-1.96-3.42-2.22-4.16-2.25-1.76-.18-3.46 1.05-4.36 1.05-.91 0-2.3-1.03-3.79-1-1.94.03-3.74 1.14-4.74 2.88-2.04 3.53-.52 8.75 1.45 11.61.97 1.4 2.12 2.97 3.63 2.91 1.46-.06 2.02-.94 3.78-.94 1.76 0 2.27.94 3.8.91 1.57-.03 2.56-1.42 3.52-2.83 1.11-1.62 1.57-3.2 1.59-3.28-.03-.01-3.14-1.2-3.17-4.75zM15.27 5.36c.8-.98 1.35-2.33 1.2-3.69-1.16.05-2.58.78-3.41 1.75-.74.86-1.39 2.24-1.22 3.57 1.3.1 2.63-.66 3.43-1.63z"/>
-                </svg>
-                <span class="btn--appstore__text">
-                  <span class="btn--appstore__sub" data-lang-only="ja">Mac App Store で近日公開</span>
-                  <span class="btn--appstore__sub" data-lang-only="en">Coming Soon on the</span>
-                  <span class="btn--appstore__main">Mac App Store</span>
-                </span>
+              <a class="appstore-badge-link" href="https://apps.apple.com/app/id6838206412" target="_blank" rel="noopener noreferrer" aria-label="Download on the Mac App Store">
+                <img class="appstore-badge" data-lang-only="ja" src="/assets/badges/mac-app-store-ja-white.svg" alt="Mac App Storeからダウンロード" />
+                <img class="appstore-badge" data-lang-only="en" src="/assets/badges/mac-app-store-en-white.svg" alt="Download on the Mac App Store" />
               </a>
             </div>
 

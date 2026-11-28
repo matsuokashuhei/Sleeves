@@ -71,6 +71,7 @@ html[data-lang="en"] [data-lang-only="ja"] { display: none !important; }
 
 img {
   max-width: 100%;
+  height: auto;
   display: block;
 }
 
@@ -264,29 +265,22 @@ a:hover {
   border-color: rgba(58, 42, 28, 0.42);
 }
 
-.btn--appstore {
-  padding: 11px 22px;
-  border-radius: 13px;
-  text-align: left;
+.appstore-badge-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.16s ease, opacity 0.16s ease;
 }
 
-.btn--appstore__text {
-  display: flex;
-  flex-direction: column;
-  line-height: 1.15;
+.appstore-badge-link:hover {
+  transform: translateY(-1px);
+  opacity: 0.9;
 }
 
-.btn--appstore__sub {
-  font-size: 0.68rem;
-  font-weight: 500;
-  opacity: 0.8;
-  letter-spacing: 0.02em;
-}
-
-.btn--appstore__main {
-  font-size: 1rem;
-  font-weight: 700;
-  letter-spacing: -0.01em;
+.appstore-badge {
+  height: 48px;
+  width: auto;
+  display: block;
 }
 
 /* ==========================================================================
@@ -300,12 +294,17 @@ a:hover {
 .hero__title {
   font-family: var(--font-display);
   font-size: clamp(2.15rem, 5vw, 3.65rem);
-  line-height: 1.16;
+  line-height: 1.18;
   letter-spacing: -0.025em;
   font-weight: 600;
   margin: 18px auto 18px;
-  max-width: 18ch;
+  max-width: 100%;
   color: var(--ink-primary);
+}
+
+html[data-lang="ja"] .hero__title {
+  font-size: clamp(1.75rem, 4.4vw, 3.35rem);
+  line-height: 1.28;
 }
 
 .hero__subtitle {
@@ -321,385 +320,27 @@ a:hover {
   color: var(--ink-tertiary);
 }
 
-/* Interactive Sleeves macOS Window Mockup */
+/* Hero App Screenshot */
 .shelf-stage {
   margin: 44px auto 0;
-  max-width: 960px;
+  max-width: 980px;
 }
 
-.macos-window {
-  position: relative;
-  border-radius: 18px;
+.hero-screenshot {
+  margin: 0;
+  border-radius: 16px;
   overflow: hidden;
+  border: 1px solid rgba(35, 25, 16, 0.16);
   box-shadow:
-    0 28px 70px rgba(28, 19, 12, 0.28),
-    0 4px 16px rgba(28, 19, 12, 0.14),
-    inset 0 1px 0 rgba(255, 255, 255, 0.25);
-  border: 1px solid rgba(35, 25, 16, 0.18);
-  transition: background-image 0.35s ease, background-color 0.35s ease;
-  text-align: left;
-}
-
-/* Wall Materials */
-.macos-window[data-wall="cream"] {
-  background: linear-gradient(180deg, #efe7d7 0%, #e4d8c3 100%);
-}
-.macos-window[data-wall="paper-kraft"] {
-  background: url("../assets/textures/paper-kraft.jpg") center / 340px repeat;
-}
-.macos-window[data-wall="concrete"] {
-  background: url("../assets/textures/concrete.jpg") center / 380px repeat;
-}
-.macos-window[data-wall="billiard-felt"] {
-  background: url("../assets/textures/billiard-felt.jpg") center / 360px repeat;
-}
-.macos-window[data-wall="gray-linen"] {
-  background: url("../assets/textures/gray-linen.jpg") center / 340px repeat;
-}
-.macos-window[data-wall="orange-wool"] {
-  background: url("../assets/textures/orange-wool.jpg") center / 340px repeat;
-}
-
-/* Warm Ambient Lighting overlay */
-.macos-window::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  z-index: 2;
-  background:
-    radial-gradient(ellipse 85% 65% at 50% 18%, rgba(255, 232, 190, 0.22), transparent 68%),
-    radial-gradient(ellipse 100% 100% at 50% 50%, transparent 58%, rgba(24, 16, 10, 0.28) 100%);
-  opacity: 0.72;
-  transition: opacity 0.35s ease;
-}
-
-.macos-window[data-vintage="true"]::before {
-  opacity: 1;
-  background:
-    radial-gradient(ellipse 85% 60% at 50% 15%, rgba(255, 214, 148, 0.26), transparent 65%),
-    radial-gradient(ellipse 100% 100% at 50% 50%, transparent 48%, rgba(28, 17, 9, 0.42) 100%);
-}
-
-/* macOS Chrome (Traffic lights + floating pill toolbar) */
-.macos-chrome {
-  position: absolute;
-  top: 13px;
-  left: 15px;
-  right: 15px;
-  z-index: 10;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  pointer-events: none;
-}
-
-.traffic-lights {
-  display: flex;
-  gap: 8px;
-}
-
-.traffic-light {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  box-shadow: inset 0 0 0 0.5px rgba(0, 0, 0, 0.18), 0 1px 2px rgba(0, 0, 0, 0.15);
-}
-
-.traffic-light--close { background: #ff5f57; }
-.traffic-light--min { background: #febc2e; }
-
-.chrome-capsule {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  padding: 5px 12px;
-  border-radius: var(--radius-pill);
-  background: rgba(255, 252, 246, 0.72);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.55);
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12);
-  font-size: 0.72rem;
-  font-weight: 600;
-  color: var(--ink-primary);
-}
-
-/* Shelf Grid */
-.shelf-rows {
-  position: relative;
-  z-index: 3;
-  padding: 26px 24px 28px;
-  display: flex;
-  flex-direction: column;
-  gap: 28px;
-}
-
-.shelf-row {
-  position: relative;
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 18px;
-  padding-bottom: 14px;
-}
-
-/* Wood Shelf Ledge / Board */
-.shelf-board {
-  position: absolute;
-  left: -24px;
-  right: -24px;
-  bottom: 0;
-  height: 14px;
-  z-index: 4;
-  background-size: 320px auto;
-  background-repeat: repeat-x;
-  box-shadow:
-    0 6px 14px rgba(18, 12, 7, 0.36),
-    inset 0 1px 0 rgba(255, 255, 255, 0.25),
-    inset 0 -2px 3px rgba(0, 0, 0, 0.28);
-  transition: height 0.25s ease, transform 0.25s ease;
-}
-
-/* Shelf Style variations */
-.macos-window[data-style="store"] .shelf-board {
-  height: 15px;
-}
-
-.macos-window[data-style="store"] .shelf-row::after {
-  content: "";
-  position: absolute;
-  left: -18px;
-  right: -18px;
-  bottom: 22px;
-  height: 3px;
-  z-index: 6;
-  pointer-events: none;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.55) 0%, rgba(160, 145, 130, 0.75) 55%, rgba(60, 50, 40, 0.6) 100%);
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.35);
-  border-radius: 2px;
-}
-
-.macos-window[data-style="ledge"] .shelf-board {
-  height: 11px;
-  border-bottom: 2px solid rgba(0, 0, 0, 0.22);
-}
-
-.macos-window[data-style="rack"] .shelf-board {
-  height: 18px;
-  box-shadow:
-    0 8px 18px rgba(15, 10, 6, 0.45),
-    inset 0 2px 0 rgba(255, 255, 255, 0.2),
-    inset 0 -3px 5px rgba(0, 0, 0, 0.38);
-}
-
-.macos-window[data-style="rack"] .shelf-rows {
-  border: 14px solid transparent;
-  box-shadow: inset 0 0 26px rgba(18, 12, 7, 0.35);
-}
-
-/* Wood Materials */
-.macos-window[data-wood="oak"] .shelf-board { background-image: url("../assets/textures/wood-oak.jpg"); }
-.macos-window[data-wood="walnut"] .shelf-board { background-image: url("../assets/textures/wood-walnut.jpg"); }
-.macos-window[data-wood="pine"] .shelf-board { background-image: url("../assets/textures/wood-pine.jpg"); }
-.macos-window[data-wood="mahogany"] .shelf-board { background-image: url("../assets/textures/wood-mahogany.jpg"); }
-.macos-window[data-wood="black"] .shelf-board { background-image: url("../assets/textures/wood-black.jpg"); }
-
-/* Record Sleeve Cell */
-.record-sleeve {
-  position: relative;
-  z-index: 5;
-  aspect-ratio: 1 / 1;
-  border-radius: 2px;
-  overflow: hidden;
-  cursor: pointer;
-  padding: 0;
-  border: none;
-  background: #1a1613;
-  box-shadow:
-    0 8px 18px rgba(18, 12, 7, 0.38),
-    0 2px 4px rgba(18, 12, 7, 0.28);
-  transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.22s ease;
-}
-
-.record-sleeve:hover {
-  transform: translateY(-5px) scale(1.02);
-  box-shadow:
-    0 16px 28px rgba(18, 12, 7, 0.44),
-    0 4px 8px rgba(18, 12, 7, 0.28);
-}
-
-.record-sleeve.is-playing {
-  transform: translateY(-6px);
-  box-shadow:
-    0 0 0 2.5px var(--amber),
-    0 18px 32px rgba(18, 12, 7, 0.48);
-}
-
-.record-sleeve img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  transition: filter 0.35s ease;
-}
-
-/* Vintage wear overlay (gloss + ring wear + warm fade) */
-.record-sleeve::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background: linear-gradient(125deg, rgba(255, 255, 255, 0.16) 0%, rgba(255, 255, 255, 0.03) 34%, transparent 52%);
-  transition: opacity 0.35s ease, background 0.35s ease;
-}
-
-.macos-window[data-vintage="true"] .record-sleeve img {
-  filter: sepia(0.16) contrast(0.95) saturate(0.88);
-}
-
-.macos-window[data-vintage="true"] .record-sleeve::after {
-  background:
-    radial-gradient(circle at 50% 50%, transparent 43%, rgba(245, 236, 218, 0.22) 45.5%, transparent 48%),
-    linear-gradient(125deg, rgba(255, 252, 240, 0.2) 0%, transparent 42%),
-    inset 0 0 0 1px rgba(250, 240, 220, 0.16);
-}
-
-.record-sleeve__badge {
-  position: absolute;
-  bottom: 7px;
-  right: 7px;
-  padding: 3px 7px;
-  border-radius: var(--radius-pill);
-  background: rgba(24, 18, 14, 0.82);
-  color: #f7e6c9;
-  font-size: 0.65rem;
-  font-weight: 600;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  opacity: 0;
-  transform: translateY(4px);
-  transition: opacity 0.2s ease, transform 0.2s ease;
-  backdrop-filter: blur(6px);
-}
-
-.record-sleeve.is-playing .record-sleeve__badge {
-  opacity: 1;
-  transform: translateY(0);
-}
-
-.eq-bars {
-  display: inline-flex;
-  align-items: flex-end;
-  gap: 2px;
-  height: 9px;
-}
-
-.eq-bars span {
-  width: 2px;
-  background: var(--amber);
-  border-radius: 1px;
-  animation: eqPulse 0.9s ease-in-out infinite;
-}
-
-.eq-bars span:nth-child(2) { animation-delay: 0.22s; }
-.eq-bars span:nth-child(3) { animation-delay: 0.44s; }
-
-@keyframes eqPulse {
-  0%, 100% { height: 3px; }
-  50% { height: 9px; }
-}
-
-/* Interactive Shelf Controls Bar */
-.shelf-controls {
-  margin-top: 18px;
-  padding: 14px 18px;
+    0 28px 70px rgba(28, 19, 12, 0.24),
+    0 4px 16px rgba(28, 19, 12, 0.12);
   background: var(--bg-surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-sm);
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px 20px;
 }
 
-.control-group {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.control-group__label {
-  font-size: 0.76rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--ink-tertiary);
-  margin-right: 2px;
-}
-
-.chip-btn {
-  appearance: none;
-  border: 1px solid var(--border);
-  background: var(--bg-page);
-  color: var(--ink-secondary);
-  font-family: var(--font-sans);
-  font-size: 0.78rem;
-  font-weight: 600;
-  padding: 5px 11px;
-  border-radius: var(--radius-pill);
-  cursor: pointer;
-  transition: all 0.16s ease;
-}
-
-.chip-btn:hover {
-  border-color: var(--border-strong);
-  color: var(--ink-primary);
-}
-
-.chip-btn[aria-pressed="true"] {
-  background: var(--bg-deep);
-  color: var(--ink-inverse);
-  border-color: var(--bg-deep);
-}
-
-.swatch-btn {
-  appearance: none;
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  border: 2px solid var(--bg-surface);
-  box-shadow: 0 0 0 1px rgba(35, 25, 16, 0.25);
-  cursor: pointer;
-  background-size: cover;
-  background-position: center;
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
-}
-
-.swatch-btn:hover {
-  transform: scale(1.1);
-}
-
-.swatch-btn[aria-pressed="true"] {
-  box-shadow: 0 0 0 2px var(--accent);
-  transform: scale(1.1);
-}
-
-.now-playing-bar {
-  margin-top: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  font-size: 0.85rem;
-  color: var(--ink-secondary);
-  min-height: 26px;
-}
-
-.now-playing-bar strong {
-  color: var(--ink-primary);
+.hero-screenshot img {
+  width: 100%;
+  height: auto;
+  display: block;
 }
 
 /* ==========================================================================
@@ -717,14 +358,14 @@ a:hover {
 
 .section__header {
   text-align: center;
-  max-width: 660px;
+  max-width: 960px;
   margin: 0 auto 48px;
 }
 
 .section__title {
   font-family: var(--font-display);
-  font-size: clamp(1.75rem, 3.2vw, 2.45rem);
-  line-height: 1.2;
+  font-size: clamp(1.65rem, 3vw, 2.35rem);
+  line-height: 1.25;
   letter-spacing: -0.02em;
   margin: 12px 0 12px;
   font-weight: 600;
@@ -733,7 +374,7 @@ a:hover {
 .section__desc {
   color: var(--ink-secondary);
   margin: 0;
-  font-size: 1.02rem;
+  font-size: 1rem;
 }
 
 /* Feature Cards Grid */
@@ -785,90 +426,6 @@ a:hover {
   font-size: 0.93rem;
   color: var(--ink-secondary);
   line-height: 1.68;
-}
-
-/* Craft & Customization Split Showcase */
-.craft-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 24px;
-}
-
-.craft-card {
-  background: var(--bg-page);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  padding: 32px;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  gap: 24px;
-}
-
-.craft-card__title {
-  font-family: var(--font-display);
-  font-size: 1.45rem;
-  margin: 0 0 10px;
-  font-weight: 600;
-}
-
-.craft-card__body {
-  color: var(--ink-secondary);
-  margin: 0;
-  font-size: 0.95rem;
-}
-
-.icon-parade {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  flex-wrap: wrap;
-}
-
-.icon-parade img {
-  width: 64px;
-  height: 64px;
-  border-radius: 15px;
-  box-shadow: 0 8px 18px rgba(35, 25, 16, 0.18);
-  transition: transform 0.2s ease;
-}
-
-.icon-parade img:hover {
-  transform: translateY(-4px) rotate(-2deg);
-}
-
-.material-strip {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.material-tile {
-  aspect-ratio: 1 / 1;
-  border-radius: 10px;
-  overflow: hidden;
-  position: relative;
-  box-shadow: 0 4px 10px rgba(35, 25, 16, 0.14);
-  border: 1px solid rgba(35, 25, 16, 0.14);
-}
-
-.material-tile img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.material-tile span {
-  position: absolute;
-  left: 6px;
-  bottom: 6px;
-  font-size: 0.66rem;
-  font-weight: 600;
-  color: #fff;
-  background: rgba(24, 18, 14, 0.68);
-  padding: 2px 6px;
-  border-radius: 5px;
-  backdrop-filter: blur(4px);
 }
 
 /* How It Works Steps */
@@ -932,7 +489,7 @@ a:hover {
 .cta-banner__inner {
   position: relative;
   z-index: 1;
-  max-width: 620px;
+  max-width: 820px;
   margin: 0 auto;
 }
 
@@ -1211,10 +768,6 @@ a:hover {
   .craft-grid {
     grid-template-columns: 1fr;
   }
-  .shelf-row {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-    gap: 12px;
-  }
 }
 
 @media (max-width: 640px) {
@@ -1230,21 +783,6 @@ a:hover {
   .feature-grid,
   .steps-grid {
     grid-template-columns: 1fr;
-  }
-  .shelf-rows {
-    padding: 42px 14px 20px;
-    gap: 20px;
-  }
-  .shelf-row {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 12px;
-  }
-  .shelf-row .record-sleeve:nth-child(n+3) {
-    display: none;
-  }
-  .shelf-board {
-    left: -14px;
-    right: -14px;
   }
   .material-strip {
     grid-template-columns: repeat(3, minmax(0, 1fr));
