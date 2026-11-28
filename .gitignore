@@ -63,3 +63,5 @@ fastlane/test_output
 
 # Devin local config (per-machine, not for the repo)
 .devin/config.local.json
+# Devin plugin registration (machine-managed by .agents/plugins/install-cursor-pluglins.sh)
+.devin/config.json

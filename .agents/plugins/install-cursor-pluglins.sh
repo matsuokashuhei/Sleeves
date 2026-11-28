@@ -1,5 +1,5 @@
 #!/bin/bash
-# install.sh [plugin ...] — install agent plugins from cursor/plugins upstream.
+# install-cursor-pluglins.sh [plugin ...] — install agent plugins from cursor/plugins upstream.
 #
 # Fetches the latest upstream main, syncs each plugin into .agents/plugins/<name>,
 # and re-applies the portability fixes documented in AGENTS.md:
@@ -7,6 +7,8 @@
 #   - rename the icon asset to the Agent Plugins spec convention (assets/icon.png)
 #   - strip Cursor-only `model:` / `is_background:` frontmatter lines from agents/*.md
 #   - regenerate cursor-team-kit's root plugin.json (upstream ships none)
+# Then registers the installed plugins in .devin/config.json's requiredPlugins
+# (merging into the existing file with jq, creating it if missing).
 # With no arguments, installs all plugins. Re-running updates them.
 set -euo pipefail
 
@@ -27,11 +29,13 @@ git -C "$WORK/upstream" sparse-checkout set "${PLUGINS[@]}"
 UPSTREAM_SHA="$(git -C "$WORK/upstream" rev-parse --short HEAD)"
 echo "    upstream HEAD: $UPSTREAM_SHA"
 
+SYNCED=()
 for plugin in "${PLUGINS[@]}"; do
   src="$WORK/upstream/$plugin"
   dst="$PLUGINS_DIR/$plugin"
   [ -d "$src" ] || { echo "!! upstream has no $plugin, skipping" >&2; continue; }
   echo "==> syncing $plugin"
+  SYNCED+=("$plugin")
 
   rsync -a --delete --exclude='.cursor-plugin' "$src/" "$dst/"
 
@@ -59,5 +63,23 @@ for plugin in "${PLUGINS[@]}"; do
   fi
 done
 
+# Register the installed plugins in .devin/config.json's requiredPlugins.
+# Merge with jq so unrelated keys already in the file are preserved;
+# create the file if it does not exist.
+REPO_ROOT="$(cd "$PLUGINS_DIR/../.." && pwd)"
+CONFIG="$REPO_ROOT/.devin/config.json"
+if [ "${#SYNCED[@]}" -gt 0 ]; then
+  echo "==> registering plugins in .devin/config.json"
+  mkdir -p "$REPO_ROOT/.devin"
+  paths_json="$(printf '%s\n' "${SYNCED[@]}" | jq -R '"./.agents/plugins/\(.)"' | jq -s .)"
+  if [ -f "$CONFIG" ]; then
+    jq --argjson paths "$paths_json" \
+      '.requiredPlugins = (((.requiredPlugins // []) + $paths) | unique)' \
+      "$CONFIG" > "$CONFIG.tmp"
+    mv "$CONFIG.tmp" "$CONFIG"
+  else
+    jq -n --argjson paths "$paths_json" '{requiredPlugins: $paths}' > "$CONFIG"
+  fi
+fi
+
 echo "==> done. verify with: devin skills list | grep -c '^  /'"
-echo "    then check: git status .agents/plugins/"

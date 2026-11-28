@@ -1,6 +1,0 @@
-{
-  "requiredPlugins": [
-    "./.agents/plugins/cursor-team-kit",
-    "./.agents/plugins/pstack"
-  ]
-}

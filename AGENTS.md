@@ -686,11 +686,13 @@ jacketShape(cellIndex:)。実物のLPジャケットは角ごとにわずかに�
 
 ## エージェントプラグイン(cursor-team-kit / pstack)のプロジェクトレベル有効化(2026-11-28 検証済み)
 
-**プラグイン本体はリポジトリにコミットしない**。`.agents/plugins/install.sh`
-が上流(cursor/plugins)から取得して `.agents/plugins/` にローカル展開する
-(`.gitignore` 済み。node_modules と同じ運用)。**clone 後や初回は必ず
-`bash .agents/plugins/install.sh` を実行すること** — 実行しないと
-`.devin/config.json` の参照先が存在せずプラグインは読み込まれない。
+**プラグイン本体はリポジトリにコミットしない**。
+`.agents/plugins/install-cursor-pluglins.sh` が上流(cursor/plugins)から取得して
+`.agents/plugins/` にローカル展開する(`.gitignore` 済み。node_modules と同じ運用)。
+**clone 後や初回は必ず `bash .agents/plugins/install-cursor-pluglins.sh` を実行すること**
+— このスクリプトは本体の展開に加えて、`.devin/config.json` の `requiredPlugins` に
+プラグインのパスを登録する(ファイルが無ければ作成、既存なら他キーを保持したまま
+jq でマージ。`.devin/config.json` はコミットせず gitignore 済みのローカル状態)。
 更新も同じコマンドの再実行で、upstream main 最新に rsync --delete で同期される。
 導入しているのは **cursor-team-kit**(18スキル+2サブエージェント。
 `deslop`/`verify-this`/`loop-on-ci`/`control-ui`等)と
@@ -701,7 +703,8 @@ pstackが参照する`cursor-team-kit`の`/deslop`/`control-ui`/`control-cli`は
 - **`.devin/config.json` の `requiredPlugins` にローカル相対パス
   `"./.agents/plugins/cursor-team-kit"` を書く方式で有効化できる**
   (公式ドキュメントは git ソースのみ記載だが、ローカルパスも実際には受理される)。
-  リモートfetchではなく作業コピーそのものが使われるので編集が即反映される
+  リモートfetchではなく作業コピーそのものが使われるので編集が即反映される。
+  この登録は install-cursor-pluglins.sh が自動で行う(手で書く必要はない)
 - 検証は認証不要で `devin skills list` を実行し、ログの
   `plugins discovery: ... active_plugins=1 skills=18 agents=2` と
   出力の `/cursor-team-kit:<skill>` 行で確認できる
@@ -720,7 +723,7 @@ pstackが参照する`cursor-team-kit`の`/deslop`/`control-ui`/`control-cli`は
 - プラグインスキルは `/cursor-team-kit:<skill>` のスラッシュコマンド形式。
   サブエージェントはCLI/Devin Desktopのみでロード(クラウドセッションでは不可)
 
-### install.sh が行う适配(上流からの改変点)
+### install-cursor-pluglins.sh が行う适配(上流からの改変点)
 
 上流(cursor/plugins)を sparse clone して rsync --delete で同期し、
 以下を自動適用する: `.cursor-plugin/` 除外、
