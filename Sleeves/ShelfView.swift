@@ -1256,6 +1256,12 @@ struct ShelfView: View {
     /// pendingSlotを渡すとfetch待ちの間そのスロット位置を半透明に保つ
     /// (ドロップ→レコード出現の繋ぎ)
     private func addDroppedText(_ text: String?, atSlot s: Int?, pendingSlot: Int? = nil) -> Bool {
+        #if DEBUG
+        if ShowcaseMode.shared.isEnabled {
+            Self.logger.notice("external drop ignored in showcase mode: text='\(text ?? "nil", privacy: .public)' slot=\(s ?? -1, privacy: .public)")
+            return false
+        }
+        #endif
         guard let text, let parsed = MediaURLParser.parse(text) else {
             Self.logger.notice("drop add: parse failed for '\(text ?? "nil", privacy: .public)'")
             return false
@@ -1506,6 +1512,13 @@ struct ShelfView: View {
     /// 同時にドラッグ画像をこのシェルフのレコードサイズへモーフィングする。
     /// 登録済み・prefetch済みのidはfetchを起動しない
     private func externalDragEntered(url: URL?) {
+        #if DEBUG
+        if ShowcaseMode.shared.isEnabled {
+            externalHoverID = nil
+            Self.logger.notice("external drag entered ignored in showcase mode: url=\(url?.absoluteString ?? "nil", privacy: .public)")
+            return
+        }
+        #endif
         guard let url, let parsed = MediaURLParser.parse(url.absoluteString) else {
             externalHoverID = nil
             Self.logger.notice("external drag entered: no parseable URL, prefetch/morph skipped")
@@ -1595,6 +1608,9 @@ struct ShelfView: View {
     /// 半透明にして着地位置を予告する(空きが無ければハイライトなし)。
     /// 高頻度で呼ばれるのでログはスロットが変わったときだけ出す
     private func externalDragMoved(to p: CGPoint) {
+        #if DEBUG
+        if ShowcaseMode.shared.isEnabled { return }
+        #endif
         let g = overlayGridPoint(p)
         var slotID: String?
         if let (index, _) = slotInsertion(atGridPoint: g) {
@@ -1622,6 +1638,13 @@ struct ShelfView: View {
     /// 空きセル上ならそのスロットへ、グリッド外(余白)なら最も近い
     /// 空きスロットへ配置する
     private func externalDrop(_ url: URL, at p: CGPoint) -> Bool {
+        #if DEBUG
+        if ShowcaseMode.shared.isEnabled {
+            Self.logger.notice("external overlay drop ignored in showcase mode: url=\(url.absoluteString, privacy: .public)")
+            clearDropTarget()
+            return false
+        }
+        #endif
         let g = overlayGridPoint(p)
         var s: Int?
         if let (index, after) = slotInsertion(atGridPoint: g) {
@@ -2737,9 +2760,21 @@ private struct AlbumSlotView: View {
     /// artworkRevision(ダウンロード完了)の検知用)
     @ObservedObject var store: ShelfStore
     @ObservedObject private var monitor = PlaybackMonitor.shared
+    #if DEBUG
+    @ObservedObject private var showcaseMode = ShowcaseMode.shared
+    #endif
     @State private var isHovered = false
     /// キャッシュ済みジャケット(bodyのたびに同期ディスク読み込みしない)
     @State private var artwork: NSImage?
+
+    /// 展示モードが有効か（Releaseビルドでは常にfalse）
+    private var isShowcaseMode: Bool {
+        #if DEBUG
+        showcaseMode.isEnabled
+        #else
+        false
+        #endif
+    }
 
     /// ジャケット本体(画像または読み込み中プレースホルダ)を
     /// 角丸でクリップしたもの。プラグインのフック(a)はこの出力を入力に取る
@@ -2774,7 +2809,7 @@ private struct AlbumSlotView: View {
             .applyingJacketPlugins(plugins, cellIndex: slotIndex)
         .shadow(color: .black.opacity(0.25), radius: 3, y: 2)
         .overlay {
-            if isHovered {
+            if isHovered && !isShowcaseMode {
                 // ボタンはセルサイズ比例(S=96ptで従来の44pt/17pt相当)
                 let cell = store.settings.artworkSize.points
                 ZStack {
@@ -2795,9 +2830,18 @@ private struct AlbumSlotView: View {
         .applyingCellPlugins(plugins)
         .contentShape(ShelfPluginLayout.jacketShape(cellIndex: slotIndex))
         .onHover { hovered in
-            isHovered = hovered
+            isHovered = isShowcaseMode ? false : hovered
+        }
+        .onChange(of: isShowcaseMode) { _, showcase in
+            if showcase { isHovered = false }
         }
         .onTapGesture {
+            #if DEBUG
+            if showcaseMode.isEnabled {
+                Self.logger.notice("tap ignored in showcase mode: '\(entry.title, privacy: .public)' id=\(entry.id, privacy: .public)")
+                return
+            }
+            #endif
             Task {
                 do {
                     try await monitor.toggle(entry)

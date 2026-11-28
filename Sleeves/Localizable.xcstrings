@@ -3205,6 +3205,23 @@
         }
       }
     },
+    "Mode" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mode"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "モード"
+          }
+        }
+      }
+    },
     "Neutral White" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -3857,6 +3874,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "棱镜"
+          }
+        }
+      }
+    },
+    "Production" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Production"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "製品"
           }
         }
       }
@@ -4593,6 +4627,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "层板厚度"
+          }
+        }
+      }
+    },
+    "Showcase" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Showcase"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "展示"
           }
         }
       }

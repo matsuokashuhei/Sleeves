@@ -98,6 +98,12 @@ struct SettingsView: View {
                         Section {
                             AppIconPicker()
                         }
+                        #if DEBUG
+                        // 展示モード切替(Debugビルド専用・アプリ全体共通)
+                        Section {
+                            ShowcaseModePicker()
+                        }
+                        #endif
                         // 削除確認はアプリ全体の振る舞いに近いので
                         // Generalに置く(編集対象は他の表示設定と同じく
                         // フォーカス中のシェルフ)
@@ -411,6 +417,35 @@ private struct DeleteConfirmationToggle: View {
         )
     }
 }
+
+#if DEBUG
+/// 製品モード / 展示モードの切替ピッカー（Debug ビルド専用）。
+/// アプリ全体共通の設定で、変更は UserDefaults に保存され開いている全シェルフへ即座に反映される。
+private struct ShowcaseModePicker: View {
+
+    private static let logger = Logger(subsystem: "com.cacheandbuffer.Sleeves", category: "UI")
+
+    @ObservedObject private var showcaseMode = ShowcaseMode.shared
+
+    var body: some View {
+        Picker("Mode", selection: modeSelection) {
+            Text("Production").tag(ShowcaseMode.Mode.production)
+            Text("Showcase").tag(ShowcaseMode.Mode.showcase)
+        }
+        .pickerStyle(.segmented)
+    }
+
+    private var modeSelection: Binding<ShowcaseMode.Mode> {
+        Binding(
+            get: { showcaseMode.mode },
+            set: { newValue in
+                Self.logger.notice("settings: mode picker changed to \(newValue.rawValue, privacy: .public)")
+                showcaseMode.mode = newValue
+            }
+        )
+    }
+}
+#endif
 
 /// グリッド間隔のスライダー1本。spacingのキーで対象フィールドを
 /// 指定する(rowSpacing/columnSpacingとも棚セクション。
